@@ -1,6 +1,8 @@
 import { serve } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { createApp } from "./app";
+import { db } from "../db/client";
+import { createTxLineClient } from "../txline/client";
 
 const app = createApp();
 
@@ -13,4 +15,14 @@ const port = Number(process.env.PORT ?? 3000);
 
 serve({ fetch: app.fetch, port }, (info) => {
   console.log(`world-cup-hilo api listening on http://localhost:${info.port}`);
+});
+
+// Backend owns the one TxLINE stream for the whole process (replay by
+// default; TXLINE_MODE=live once credentials exist).
+const txLineClient = createTxLineClient({
+  db,
+  intervalMs: Number(process.env.TXLINE_REPLAY_INTERVAL_MS ?? 1500),
+});
+txLineClient.start().catch((error: unknown) => {
+  console.error("Failed to start TxLINE client", error);
 });

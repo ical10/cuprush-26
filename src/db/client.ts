@@ -10,3 +10,5 @@ if (!databaseUrl) {
 
 export const queryClient = postgres(databaseUrl);
 export const db = drizzle(queryClient, { schema });
+
+export type Database = typeof db;
