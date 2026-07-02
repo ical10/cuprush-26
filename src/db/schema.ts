@@ -68,6 +68,18 @@ export const fixtureGameState = pgEnum("fixture_game_state", [
 
 export type FixtureGameState = (typeof fixtureGameState.enumValues)[number];
 
+// Tournament stage drives the per-fixture question budget (see
+// src/questions/stage-budget.ts). Defaults to "group" for fixtures ingested
+// without an explicit stage (TxLINE's feed doesn't carry tournament round).
+export const fixtureStage = pgEnum("fixture_stage", [
+  "group",
+  "early_knockout",
+  "semi_final",
+  "final",
+]);
+
+export type FixtureStage = (typeof fixtureStage.enumValues)[number];
+
 // Per-team totals for one TxLINE-supported stat category.
 export type FixtureTeamStats = {
   goals: number;
@@ -95,6 +107,7 @@ export const fixtures = pgTable(
     awayTeam: text("away_team").notNull(),
     startsAt: timestamp("starts_at", { withTimezone: true }).notNull(),
     gameState: fixtureGameState("game_state").notNull().default("scheduled"),
+    stage: fixtureStage("stage").notNull().default("group"),
     // Durable TxLINE cursor: accept an event only if its sequence is newer.
     lastSeq: integer("last_seq").notNull().default(0),
     // Current per-team stat totals from TxLINE, advanced atomically with
