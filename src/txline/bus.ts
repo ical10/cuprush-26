@@ -13,7 +13,7 @@ export type FixtureUpdate = {
   stats: FixtureStats;
 };
 
-const FIXTURE_UPDATE = "fixture-update";
+export const FIXTURE_UPDATE = "fixture-update";
 
 export const fixtureBus = new EventEmitter();
 // Every SSE connection registers a listener; don't warn on many of them.
