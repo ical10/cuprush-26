@@ -15,6 +15,13 @@
       "when": 1782998417806,
       "tag": "0001_vengeful_prodigy",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1783000617301,
+      "tag": "0002_yellow_gravity",
+      "breakpoints": true
     }
   ]
 }

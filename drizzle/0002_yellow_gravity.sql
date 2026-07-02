@@ -1,0 +1,2 @@
+CREATE TYPE "public"."fixture_stage" AS ENUM('group', 'early_knockout', 'semi_final', 'final');--> statement-breakpoint
+ALTER TABLE "fixtures" ADD COLUMN "stage" "fixture_stage" DEFAULT 'group' NOT NULL;
