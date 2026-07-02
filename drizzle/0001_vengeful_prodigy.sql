@@ -1,0 +1,1 @@
+ALTER TABLE "fixtures" ADD COLUMN "stats" jsonb DEFAULT '{}'::jsonb NOT NULL;

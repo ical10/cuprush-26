@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import {
   check,
   integer,
+  jsonb,
   pgEnum,
   pgTable,
   text,
@@ -65,6 +66,26 @@ export const fixtureGameState = pgEnum("fixture_game_state", [
   "abandoned",
 ]);
 
+export type FixtureGameState = (typeof fixtureGameState.enumValues)[number];
+
+// Per-team totals for one TxLINE-supported stat category.
+export type FixtureTeamStats = {
+  goals: number;
+  yellowCards: number;
+  redCards: number;
+  corners: number;
+};
+
+// Only the period keys TxLINE's feed and the question templates need.
+export type FixturePeriodKey = "full_time" | "first_half" | "second_half";
+
+// Current per-fixture stat totals applied from TxLINE events, keyed by
+// period. `full_time` is always present once any event has been applied;
+// half-specific totals are filled in as they become available.
+export type FixtureStats = Partial<
+  Record<FixturePeriodKey, { home: FixtureTeamStats; away: FixtureTeamStats }>
+>;
+
 export const fixtures = pgTable(
   "fixtures",
   {
@@ -76,6 +97,9 @@ export const fixtures = pgTable(
     gameState: fixtureGameState("game_state").notNull().default("scheduled"),
     // Durable TxLINE cursor: accept an event only if its sequence is newer.
     lastSeq: integer("last_seq").notNull().default(0),
+    // Current per-team stat totals from TxLINE, advanced atomically with
+    // last_seq. See src/txline/apply.ts.
+    stats: jsonb("stats").$type<FixtureStats>().notNull().default({}),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),

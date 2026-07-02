@@ -1,0 +1,115 @@
+{
+  "snapshot": {
+    "fixture_id": "wc-2026-arg-fra",
+    "home_team": "Argentina",
+    "away_team": "France",
+    "starts_at": "2026-07-19T15:00:00.000Z",
+    "game_state": "scheduled",
+    "seq": 0,
+    "stats": {
+      "full_time": {
+        "home": { "goals": 0, "yellow_cards": 0, "red_cards": 0, "corners": 0 },
+        "away": { "goals": 0, "yellow_cards": 0, "red_cards": 0, "corners": 0 }
+      }
+    }
+  },
+  "events": [
+    {
+      "fixture_id": "wc-2026-arg-fra",
+      "seq": 1,
+      "type": "corner",
+      "game_state": "live",
+      "occurred_at": "2026-07-19T15:12:00.000Z",
+      "stats": {
+        "full_time": {
+          "home": { "goals": 0, "yellow_cards": 0, "red_cards": 0, "corners": 1 },
+          "away": { "goals": 0, "yellow_cards": 0, "red_cards": 0, "corners": 0 }
+        },
+        "first_half": {
+          "home": { "goals": 0, "yellow_cards": 0, "red_cards": 0, "corners": 1 },
+          "away": { "goals": 0, "yellow_cards": 0, "red_cards": 0, "corners": 0 }
+        }
+      }
+    },
+    {
+      "fixture_id": "wc-2026-arg-fra",
+      "seq": 2,
+      "type": "goal",
+      "game_state": "live",
+      "occurred_at": "2026-07-19T15:23:00.000Z",
+      "stats": {
+        "full_time": {
+          "home": { "goals": 1, "yellow_cards": 0, "red_cards": 0, "corners": 1 },
+          "away": { "goals": 0, "yellow_cards": 0, "red_cards": 0, "corners": 0 }
+        },
+        "first_half": {
+          "home": { "goals": 1, "yellow_cards": 0, "red_cards": 0, "corners": 1 },
+          "away": { "goals": 0, "yellow_cards": 0, "red_cards": 0, "corners": 0 }
+        }
+      }
+    },
+    {
+      "fixture_id": "wc-2026-arg-fra",
+      "seq": 3,
+      "type": "corner",
+      "game_state": "live",
+      "occurred_at": "2026-07-19T16:05:00.000Z",
+      "stats": {
+        "full_time": {
+          "home": { "goals": 1, "yellow_cards": 0, "red_cards": 0, "corners": 1 },
+          "away": { "goals": 0, "yellow_cards": 0, "red_cards": 0, "corners": 1 }
+        },
+        "first_half": {
+          "home": { "goals": 1, "yellow_cards": 0, "red_cards": 0, "corners": 1 },
+          "away": { "goals": 0, "yellow_cards": 0, "red_cards": 0, "corners": 0 }
+        },
+        "second_half": {
+          "home": { "goals": 0, "yellow_cards": 0, "red_cards": 0, "corners": 0 },
+          "away": { "goals": 0, "yellow_cards": 0, "red_cards": 0, "corners": 1 }
+        }
+      }
+    },
+    {
+      "fixture_id": "wc-2026-arg-fra",
+      "seq": 4,
+      "type": "goal",
+      "game_state": "live",
+      "occurred_at": "2026-07-19T16:31:00.000Z",
+      "stats": {
+        "full_time": {
+          "home": { "goals": 1, "yellow_cards": 0, "red_cards": 0, "corners": 1 },
+          "away": { "goals": 1, "yellow_cards": 0, "red_cards": 0, "corners": 1 }
+        },
+        "first_half": {
+          "home": { "goals": 1, "yellow_cards": 0, "red_cards": 0, "corners": 1 },
+          "away": { "goals": 0, "yellow_cards": 0, "red_cards": 0, "corners": 0 }
+        },
+        "second_half": {
+          "home": { "goals": 0, "yellow_cards": 0, "red_cards": 0, "corners": 0 },
+          "away": { "goals": 1, "yellow_cards": 0, "red_cards": 0, "corners": 1 }
+        }
+      }
+    },
+    {
+      "fixture_id": "wc-2026-arg-fra",
+      "seq": 5,
+      "type": "state_change",
+      "game_state": "finished",
+      "occurred_at": "2026-07-19T16:52:00.000Z",
+      "stats": {
+        "full_time": {
+          "home": { "goals": 1, "yellow_cards": 0, "red_cards": 0, "corners": 1 },
+          "away": { "goals": 1, "yellow_cards": 0, "red_cards": 0, "corners": 1 }
+        },
+        "first_half": {
+          "home": { "goals": 1, "yellow_cards": 0, "red_cards": 0, "corners": 1 },
+          "away": { "goals": 0, "yellow_cards": 0, "red_cards": 0, "corners": 0 }
+        },
+        "second_half": {
+          "home": { "goals": 0, "yellow_cards": 0, "red_cards": 0, "corners": 0 },
+          "away": { "goals": 1, "yellow_cards": 0, "red_cards": 0, "corners": 1 }
+        }
+      }
+    }
+  ]
+}
