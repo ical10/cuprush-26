@@ -1,0 +1,48 @@
+{
+  "name": "world-cup-hilo",
+  "version": "1.0.0",
+  "description": "World Cup Hi-Lo — mobile-first fan prediction game (App-side PoC)",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "packageManager": "pnpm@10.28.2",
+  "scripts": {
+    "dev": "concurrently -n vite,api -c blue,green \"vite\" \"tsx watch --env-file=.env src/api/server.ts\"",
+    "build": "vite build",
+    "start": "NODE_ENV=production tsx --env-file=.env src/api/server.ts",
+    "test": "vitest run --project unit",
+    "test:watch": "vitest --project unit",
+    "test:integration": "node --env-file=.env node_modules/vitest/vitest.mjs run --project integration",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "tsx --env-file=.env src/db/migrate.ts"
+  },
+  "dependencies": {
+    "@hono/node-server": "^2.0.8",
+    "drizzle-orm": "^0.45.2",
+    "hono": "^4.12.27",
+    "postgres": "^3.4.9",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^26.1.0",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.3",
+    "concurrently": "^10.0.3",
+    "drizzle-kit": "^0.31.10",
+    "eslint": "^10.6.0",
+    "tsx": "^4.22.4",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.62.1",
+    "vite": "^8.1.3",
+    "vite-plugin-pwa": "^1.3.0",
+    "vitest": "^4.1.9"
+  }
+}
