@@ -27,6 +27,33 @@ export const SECONDARY_CATEGORIES: { category: string; templateIds: TemplateId[]
 ];
 
 /**
+ * The deterministic (non-LLM) secondary card selection: walks
+ * SECONDARY_CATEGORIES in priority order, picks the first available
+ * template id per category, and stops at `budget` or the hard cap. This is
+ * both the issue-4 generation path and the issue-5 LLM selector's fallback
+ * when the LLM is disabled, times out, or returns an invalid rule — see
+ * src/questions/llm-selector.ts.
+ */
+export function selectDeterministicSecondaries(
+  ctx: GenerationContext,
+  budget: number,
+): BuiltQuestion[] {
+  const secondaries: BuiltQuestion[] = [];
+
+  for (const { templateIds } of SECONDARY_CATEGORIES) {
+    if (secondaries.length >= budget) break;
+    if (secondaries.length + 1 >= HARD_CAP_TOTAL_CARDS) break;
+
+    const templateId = templateIds.find((id) => TEMPLATES[id].isAvailable(ctx));
+    if (!templateId) continue;
+
+    secondaries.push(TEMPLATES[templateId].build(ctx));
+  }
+
+  return secondaries;
+}
+
+/**
  * Pure, deterministic question generation for one fixture: always 1 winner
  * card, plus up to `secondaryBudget(stage)` secondary cards chosen by
  * priority, capped at HARD_CAP_TOTAL_CARDS overall. Same context + stage
@@ -37,20 +64,8 @@ export function generateQuestionRules(
   ctx: GenerationContext,
   stage: FixtureStage,
 ): BuiltQuestion[] {
-  const rules: BuiltQuestion[] = [TEMPLATES.winner.build(ctx)];
   const budget = secondaryBudget(stage);
-
-  for (const { templateIds } of SECONDARY_CATEGORIES) {
-    if (rules.length - 1 >= budget) break;
-    if (rules.length >= HARD_CAP_TOTAL_CARDS) break;
-
-    const templateId = templateIds.find((id) => TEMPLATES[id].isAvailable(ctx));
-    if (!templateId) continue;
-
-    rules.push(TEMPLATES[templateId].build(ctx));
-  }
-
-  return rules;
+  return [TEMPLATES.winner.build(ctx), ...selectDeterministicSecondaries(ctx, budget)];
 }
 
 // --- persistence ------------------------------------------------------------
