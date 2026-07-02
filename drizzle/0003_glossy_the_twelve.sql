@@ -1,0 +1,1 @@
+ALTER TABLE "questions" ADD COLUMN "settling_at" timestamp with time zone;
