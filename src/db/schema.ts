@@ -145,6 +145,8 @@ export const questionStatus = pgEnum("question_status", [
   "void",
 ]);
 
+export type QuestionStatus = (typeof questionStatus.enumValues)[number];
+
 export const questionResult = pgEnum("question_result", [
   "yes",
   "no",
@@ -177,6 +179,11 @@ export const questions = pgTable(
     result: questionResult("result"),
     opensAt: timestamp("opens_at", { withTimezone: true }).notNull(),
     locksAt: timestamp("locks_at", { withTimezone: true }).notNull(),
+    // Set when live->settling happens (fixture bus terminal event), so the
+    // scheduler can detect a settlement stuck past the 30-minute deadline.
+    // Settlement itself is issue 9's concern — this column only supports
+    // the overdue *scan*.
+    settlingAt: timestamp("settling_at", { withTimezone: true }),
     settledAt: timestamp("settled_at", { withTimezone: true }),
     attemptCount: integer("attempt_count").notNull().default(0),
     nextRetryAt: timestamp("next_retry_at", { withTimezone: true }),

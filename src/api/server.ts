@@ -3,6 +3,7 @@ import { serveStatic } from "@hono/node-server/serve-static";
 import { createApp } from "./app";
 import { db } from "../db/client";
 import { createTxLineClient } from "../txline/client";
+import { createQuestionScheduler } from "../questions/scheduler";
 
 const app = createApp();
 
@@ -26,3 +27,10 @@ const txLineClient = createTxLineClient({
 txLineClient.start().catch((error: unknown) => {
   console.error("Failed to start TxLINE client", error);
 });
+
+// Question lifecycle scheduler: scheduled->open->locked by time (1-minute
+// tick), live->settling->void from fixture bus events. LLM_SELECTOR/
+// OPENROUTER_API_KEY (issue 5) gate the secondary-card LLM selector; off by
+// default, always falls back to the deterministic template path.
+const questionScheduler = createQuestionScheduler({ db });
+questionScheduler.start();

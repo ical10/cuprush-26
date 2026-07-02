@@ -70,7 +70,7 @@ export function generateQuestionRules(
 
 // --- persistence ------------------------------------------------------------
 
-type FixtureRow = typeof fixtures.$inferSelect;
+export type FixtureRow = typeof fixtures.$inferSelect;
 
 function totalCorners(fixture: FixtureRow): number | null {
   const fullTime = fixture.stats.full_time;
@@ -176,12 +176,31 @@ export type GenerateQuestionsResult = {
 };
 
 /**
- * Generates and persists questions for one fixture. Idempotent: the
- * canonical rule hash is unique per question, so regenerating a fixture
- * (e.g. the scheduler re-running after the first generation already
- * happened) inserts nothing new — `onConflictDoNothing` silently skips
- * already-existing rows instead of erroring.
+ * Persists an already-selected rule list (from either the deterministic
+ * path or the LLM selector — see src/questions/llm-selector.ts) for one
+ * fixture. Idempotent: the canonical rule hash is unique per question, so
+ * persisting the same fixture's rules again (e.g. the scheduler re-running
+ * after generation already happened) inserts nothing new —
+ * `onConflictDoNothing` silently skips already-existing rows instead of
+ * erroring.
  */
+export async function persistGeneratedQuestions(
+  db: Database,
+  fixture: FixtureRow,
+  rules: BuiltQuestion[],
+): Promise<GenerateQuestionsResult> {
+  const rows = rules.map((built) => toInsertRow(fixture, built));
+
+  const inserted = await db
+    .insert(questions)
+    .values(rows)
+    .onConflictDoNothing({ target: questions.ruleHash })
+    .returning();
+
+  return { attempted: rows.length, inserted };
+}
+
+/** Generates (deterministically, no LLM) and persists questions for one fixture. */
 export async function generateQuestionsForFixture(
   db: Database,
   fixtureId: string,
@@ -193,13 +212,5 @@ export async function generateQuestionsForFixture(
 
   const ctx = await resolveGenerationContext(db, fixture);
   const rules = generateQuestionRules(ctx, fixture.stage);
-  const rows = rules.map((built) => toInsertRow(fixture, built));
-
-  const inserted = await db
-    .insert(questions)
-    .values(rows)
-    .onConflictDoNothing({ target: questions.ruleHash })
-    .returning();
-
-  return { attempted: rows.length, inserted };
+  return persistGeneratedQuestions(db, fixture, rules);
 }

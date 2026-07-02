@@ -22,6 +22,13 @@
       "when": 1783000617301,
       "tag": "0002_yellow_gravity",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1783001567488,
+      "tag": "0003_glossy_the_twelve",
+      "breakpoints": true
     }
   ]
 }
