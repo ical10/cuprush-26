@@ -282,3 +282,29 @@ export const TEMPLATES: Record<TemplateId, TemplateDefinition> = {
 };
 
 export const TEMPLATE_IDS = Object.keys(TEMPLATES) as TemplateId[];
+
+/**
+ * The outcome pair a participant may submit for each template's questions —
+ * the lowercase form of each template's rendered `copy.outcomes`. The
+ * prediction API validates submissions against this.
+ */
+export const TEMPLATE_OUTCOMES: Record<
+  TemplateId,
+  readonly ["yes", "no"] | readonly ["higher", "lower"]
+> = {
+  winner: ["yes", "no"],
+  corners_intra: ["higher", "lower"],
+  corners_inter_benchmark: ["higher", "lower"],
+  period_corners_intra: ["higher", "lower"],
+  goals_exact_margin: ["yes", "no"],
+  team_goals_inter_benchmark: ["yes", "no"],
+  yellow_cards_intra: ["higher", "lower"],
+  red_cards_intra: ["higher", "lower"],
+};
+
+/** Allowed outcomes for a stored `questions.template` value; null if unknown. */
+export function allowedOutcomes(
+  templateId: string,
+): readonly string[] | null {
+  return (TEMPLATE_OUTCOMES as Record<string, readonly string[]>)[templateId] ?? null;
+}

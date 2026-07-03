@@ -248,6 +248,12 @@ export const predictions = pgTable(
     submittedAt: timestamp("submitted_at", { withTimezone: true }),
     confirmedAt: timestamp("confirmed_at", { withTimezone: true }),
     scoredAt: timestamp("scored_at", { withTimezone: true }),
+    // Chain-submit retry bookkeeping: capped exponential backoff while the
+    // row is pending, until the question locks (then failed). See
+    // src/predictions/reconciler.ts.
+    attemptCount: integer("attempt_count").notNull().default(0),
+    nextRetryAt: timestamp("next_retry_at", { withTimezone: true }),
+    lastError: text("last_error"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -257,6 +263,10 @@ export const predictions = pgTable(
     unique("predictions_participant_question_unique").on(
       prediction.participantId,
       prediction.questionId,
+    ),
+    check(
+      "predictions_attempt_count_nonnegative",
+      sql`${prediction.attemptCount} >= 0`,
     ),
   ],
 );

@@ -2,10 +2,16 @@ import { serve } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { createApp } from "./app";
 import { db } from "../db/client";
+import { createChainAdapterFromEnv } from "../chain";
 import { createTxLineClient } from "../txline/client";
 import { createQuestionScheduler } from "../questions/scheduler";
+import { createPredictionReconciler } from "../predictions/reconciler";
 
-const app = createApp();
+// One chain adapter for the whole process: the prediction routes and the
+// reconciler must share it (the stub's state is in-memory).
+const chain = createChainAdapterFromEnv();
+
+const app = createApp({ chain });
 
 if (process.env.NODE_ENV === "production") {
   app.use("/*", serveStatic({ root: "./dist/client" }));
@@ -34,3 +40,9 @@ txLineClient.start().catch((error: unknown) => {
 // default, always falls back to the deterministic template path.
 const questionScheduler = createQuestionScheduler({ db });
 questionScheduler.start();
+
+// One-minute prediction reconciler: retries pending chain submissions with
+// capped backoff, repairs rows whose prediction already reached the chain,
+// and fails pending rows once their question locks.
+const predictionReconciler = createPredictionReconciler({ db, adapter: chain });
+predictionReconciler.start();
