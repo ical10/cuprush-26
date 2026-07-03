@@ -1,0 +1,20 @@
+[package]
+name = "world-cup-hilo"
+version = "0.1.0"
+description = "World Cup Hi-Lo on-chain question + prediction program"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "world_cup_hilo"
+
+[features]
+default = []
+cpi = ["no-entrypoint"]
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+idl-build = ["anchor-lang/idl-build"]
+
+[dependencies]
+anchor-lang = "1.1.2"
