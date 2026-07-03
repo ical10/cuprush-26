@@ -1,7 +1,7 @@
 import { and, desc, eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
-import { predictions, questions } from "../../db/schema";
+import { fixtures, predictions, questions } from "../../db/schema";
 import type { ChainAdapter } from "../../chain";
 import {
   createRateLimiter,
@@ -9,6 +9,7 @@ import {
 } from "../../chain/guardrails";
 import { allowedOutcomes } from "../../questions/templates";
 import { submitPendingPrediction } from "../../predictions/reconciler";
+import { renderCopy } from "./questions";
 import type { AuthAdapter } from "../auth/adapter";
 import {
   createAuthMiddleware,
@@ -168,35 +169,59 @@ export function createPredictionRoutes(
   app.get("/predictions", requireAuth, async (c) => {
     const db = await getDb();
     const rows = await db
-      .select({
-        prediction: predictions,
-        question: {
-          id: questions.id,
-          fixtureId: questions.fixtureId,
-          template: questions.template,
-          status: questions.status,
-          result: questions.result,
-          opensAt: questions.opensAt,
-          locksAt: questions.locksAt,
-          questionPda: questions.questionPda,
-        },
-      })
+      .select({ prediction: predictions, question: questions, fixture: fixtures })
       .from(predictions)
       .innerJoin(questions, eq(predictions.questionId, questions.id))
+      .innerJoin(fixtures, eq(questions.fixtureId, fixtures.id))
       .where(eq(predictions.participantId, c.get("participant").id))
       .orderBy(desc(predictions.createdAt));
 
     return c.json(
-      rows.map((row) => ({
-        ...predictionPayload(row.prediction),
-        question: row.question,
-        // Pure derivation, no stored column: unresolved/pushed questions
-        // are neither right nor wrong.
-        correct:
-          row.question.result && row.question.result !== "push"
-            ? row.prediction.outcome === row.question.result
-            : null,
-      })),
+      rows.map((row) => {
+        // The live screen needs the rendered copy, rule fields, and nested
+        // fixture (stats/state) — not just the bare question row — so it can
+        // display and evaluate a locked pick against the SSE stream.
+        const copy = renderCopy(row.question, row.fixture);
+        return {
+          ...predictionPayload(row.prediction),
+          question: {
+            id: row.question.id,
+            fixtureId: row.question.fixtureId,
+            template: row.question.template,
+            status: row.question.status,
+            result: row.question.result,
+            opensAt: row.question.opensAt,
+            locksAt: row.question.locksAt,
+            settledAt: row.question.settledAt,
+            questionPda: row.question.questionPda,
+            question: copy.text,
+            outcomes: copy.outcomes,
+            rule: {
+              statKey1: row.question.statKey1,
+              statKey2: row.question.statKey2,
+              period: row.question.period,
+              operator: row.question.operator,
+              comparison: row.question.comparison,
+              threshold: row.question.threshold,
+              benchmarkValue: row.question.benchmarkValue,
+            },
+            fixture: {
+              id: row.fixture.id,
+              homeTeam: row.fixture.homeTeam,
+              awayTeam: row.fixture.awayTeam,
+              startsAt: row.fixture.startsAt,
+              gameState: row.fixture.gameState,
+              stats: row.fixture.stats,
+            },
+          },
+          // Pure derivation, no stored column: unresolved/pushed questions
+          // are neither right nor wrong.
+          correct:
+            row.question.result && row.question.result !== "push"
+              ? row.prediction.outcome === row.question.result
+              : null,
+        };
+      }),
     );
   });
 
