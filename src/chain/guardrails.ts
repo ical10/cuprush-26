@@ -1,34 +1,8 @@
 /**
- * Sponsorship guardrails (pure, in-memory). The sponsor path must only ever
- * pay for allowlisted Hi-Lo instructions, and no wallet may spam
- * submissions — see the research doc "Sponsorship guardrails". The API
- * layer applies these before any chain submission.
+ * Sponsorship guardrails (pure, in-memory): no wallet may spam submissions
+ * — see the research doc "Sponsorship guardrails". The API layer applies
+ * this before any chain submission.
  */
-
-export const HILO_INSTRUCTIONS = [
-  "create_question",
-  "submit_prediction",
-  "settle_question",
-] as const;
-
-export type HiLoInstruction = (typeof HILO_INSTRUCTIONS)[number];
-
-export type InstructionAllowlist = {
-  programId: string;
-  instructions: readonly string[];
-};
-
-/** True only for the exact allowlisted program id + instruction name. */
-export function isAllowlistedInstruction(
-  allowlist: InstructionAllowlist,
-  programId: string,
-  instruction: string,
-): boolean {
-  return (
-    programId === allowlist.programId &&
-    allowlist.instructions.includes(instruction)
-  );
-}
 
 export type RateLimiter = {
   /** Records one attempt for `key`; false when the cap is already reached. */

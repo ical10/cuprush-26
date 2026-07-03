@@ -1,12 +1,10 @@
 import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
-import type { Database } from "../../db/client";
 import { fixtures } from "../../db/schema";
 import { onFixtureUpdate, type FixtureUpdate } from "../../txline/bus";
+import type { DbProvider } from "../auth/middleware";
 
 const HEARTBEAT_MS = 25_000;
-
-export type DbProvider = () => Database | Promise<Database>;
 
 function eventId(fixtureId: string, seq: number): string {
   return `${fixtureId}:${seq}`;

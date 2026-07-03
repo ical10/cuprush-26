@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { healthRoute } from "./routes/health";
-import { createLiveRoute, type DbProvider } from "./routes/live";
+import { createLiveRoute } from "./routes/live";
 import { createAccountRoutes } from "./routes/account";
 import { createLeaderboardRoute } from "./routes/leaderboard";
 import { createQuestionsRoute } from "./routes/questions";
@@ -9,6 +9,7 @@ import {
   type PredictionRoutesOptions,
 } from "./routes/predictions";
 import { createAuthAdapterFromEnv, type AuthAdapter } from "./auth/adapter";
+import type { DbProvider } from "./auth/middleware";
 import { createChainAdapterFromEnv, type ChainAdapter } from "../chain";
 import type { Database } from "../db/client";
 
@@ -22,6 +23,13 @@ export type CreateAppOptions = {
 
 export function createApp(options: CreateAppOptions = {}) {
   const app = new Hono();
+
+  // Every hand-written error in the routes is `{ error: string }`; make
+  // unexpected throws use the same envelope instead of Hono's default.
+  app.onError((error, c) => {
+    console.error("unhandled route error", error);
+    return c.json({ error: "internal error" }, 500);
+  });
 
   // The production db (src/db/client.ts) throws at import time if
   // DATABASE_URL is unset, so when no db is supplied it's only imported

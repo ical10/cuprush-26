@@ -32,12 +32,3 @@ export function seededInt(seed: number, min: number, max: number): number {
   const range = max - min + 1;
   return min + (seed % range);
 }
-
-/** Deterministically picks one item from a non-empty readonly list. */
-export function seededPick<T>(seed: number, items: readonly T[]): T {
-  if (items.length === 0) throw new Error("seededPick: items must not be empty");
-  const index = seed % items.length;
-  const item = items[index];
-  if (item === undefined) throw new Error("seededPick: unreachable index");
-  return item;
-}

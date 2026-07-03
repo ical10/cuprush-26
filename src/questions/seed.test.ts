@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { deterministicSeed, seededBool, seededInt, seededPick } from "./seed";
+import { deterministicSeed, seededBool, seededInt } from "./seed";
 
 describe("deterministicSeed", () => {
   it("is a pure function of its parts: same parts always produce the same seed", () => {
@@ -57,21 +57,3 @@ describe("seededInt", () => {
   });
 });
 
-describe("seededPick", () => {
-  it("always returns one of the supplied items", () => {
-    const items = ["a", "b", "c"] as const;
-    for (let i = 0; i < 50; i++) {
-      expect(items).toContain(seededPick(i, items));
-    }
-  });
-
-  it("is deterministic for the same seed", () => {
-    const items = ["a", "b", "c", "d"] as const;
-    const seed = deterministicSeed("wc-2026-arg-fra", "template-pick");
-    expect(seededPick(seed, items)).toBe(seededPick(seed, items));
-  });
-
-  it("throws on an empty list", () => {
-    expect(() => seededPick(1, [])).toThrow();
-  });
-});
