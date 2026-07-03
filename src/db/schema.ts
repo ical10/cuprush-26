@@ -26,6 +26,13 @@ export const participants = pgTable(
     points: integer("points").notNull().default(0),
     currentStreak: integer("current_streak").notNull().default(0),
     bestStreak: integer("best_streak").notNull().default(0),
+    // Records the user's request to revoke server signing authority over
+    // their embedded wallet. The Privy-side delegation revocation itself is
+    // HITL (no Privy credentials yet) — this timestamp is the durable,
+    // auditable record of the request.
+    delegationRevokedAt: timestamp("delegation_revoked_at", {
+      withTimezone: true,
+    }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),

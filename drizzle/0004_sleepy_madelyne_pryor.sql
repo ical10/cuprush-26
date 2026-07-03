@@ -1,0 +1,1 @@
+ALTER TABLE "participants" ADD COLUMN "delegation_revoked_at" timestamp with time zone;
