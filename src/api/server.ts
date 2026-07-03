@@ -5,6 +5,7 @@ import { db } from "../db/client";
 import { createChainAdapterFromEnv } from "../chain";
 import { createTxLineClient } from "../txline/client";
 import { createQuestionScheduler } from "../questions/scheduler";
+import { createSettlementExecutor } from "../questions/settle";
 import { createPredictionReconciler } from "../predictions/reconciler";
 
 // One chain adapter for the whole process: the prediction routes and the
@@ -46,3 +47,9 @@ questionScheduler.start();
 // and fails pending rows once their question locks.
 const predictionReconciler = createPredictionReconciler({ db, adapter: chain });
 predictionReconciler.start();
+
+// One-minute settlement executor: moves "settling" questions to "settled"
+// (evaluating outcomes from fixture stats, submitting to chain) and scores
+// their confirmed predictions exactly once.
+const settlementExecutor = createSettlementExecutor({ db, chain });
+settlementExecutor.start();
