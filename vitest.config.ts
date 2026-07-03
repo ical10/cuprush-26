@@ -25,6 +25,11 @@ export default defineConfig({
         test: {
           name: "integration",
           environment: "node",
+          // All integration files share one Postgres database, and the
+          // scheduler/generator operate on global tables, so concurrent
+          // files pollute each other's row counts and benchmark queries.
+          // Run integration files serially.
+          fileParallelism: false,
           include: ["src/**/*.int.test.ts"],
           exclude: ["node_modules/**"],
           globalSetup: ["src/test/db-global-setup.ts"],
