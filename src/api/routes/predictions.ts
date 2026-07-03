@@ -190,6 +190,12 @@ export function createPredictionRoutes(
       rows.map((row) => ({
         ...predictionPayload(row.prediction),
         question: row.question,
+        // Pure derivation, no stored column: unresolved/pushed questions
+        // are neither right nor wrong.
+        correct:
+          row.question.result && row.question.result !== "push"
+            ? row.prediction.outcome === row.question.result
+            : null,
       })),
     );
   });
