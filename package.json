@@ -18,7 +18,8 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "tsx --env-file=.env src/db/migrate.ts"
+    "db:migrate": "tsx --env-file=.env src/db/migrate.ts",
+    "seed:demo": "tsx --env-file=.env src/db/seed-demo.ts"
   },
   "dependencies": {
     "@hono/node-server": "^2.0.8",
