@@ -55,11 +55,17 @@ pnpm install
 createdb worldcup_hilo
 cp .env.example .env   # adjust DATABASE_URL if your Postgres setup differs
 pnpm db:migrate
+pnpm seed:demo   # optional: one open winner + inter-fixture card to swipe
 pnpm dev
 ```
 
 The app runs at http://localhost:5173 (Vite) with the API on
 http://localhost:3000 (see `PORT` in `.env`).
+
+Without `pnpm seed:demo` (or live TxLINE data) the deck shows the "no open
+questions" empty state. The seed inserts a finished benchmark fixture and one
+fixture kicking off in ~2 hours, leaving a winner card and an inter-fixture
+corner card open to answer immediately. It is idempotent and local-only.
 
 ## Environment
 
@@ -92,6 +98,7 @@ See `.env.example` for inline docs. Only the first three are required locally.
 | `pnpm typecheck` | `tsc --noEmit` |
 | `pnpm db:generate` | Generate Drizzle migrations from `src/db/schema.ts` |
 | `pnpm db:migrate` | Apply migrations to `DATABASE_URL` |
+| `pnpm seed:demo` | Insert local demo fixtures + open cards (idempotent) |
 
 ## Testing
 
