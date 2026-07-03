@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { TEMPLATES, TEMPLATE_IDS } from "./templates";
+import { TEMPLATES, TEMPLATE_IDS, TEMPLATE_OUTCOMES, allowedOutcomes } from "./templates";
 import type { GenerationContext } from "./types";
 
 const ctx: GenerationContext = {
@@ -196,5 +196,21 @@ describe("red_cards_intra template", () => {
     const built = template.build(ctxWithBenchmarks);
     expect(built.rule.statKey1.endsWith(".redCards")).toBe(true);
     expect(built.rule.statKey2.endsWith(".redCards")).toBe(true);
+  });
+});
+
+describe("TEMPLATE_OUTCOMES", () => {
+  it("matches each template's rendered copy outcomes, lowercased", () => {
+    for (const id of TEMPLATE_IDS) {
+      const built = TEMPLATES[id].build(ctxWithBenchmarks);
+      expect(TEMPLATE_OUTCOMES[id]).toEqual(
+        built.copy.outcomes.map((outcome) => outcome.toLowerCase()),
+      );
+    }
+  });
+
+  it("returns null for an unknown template id", () => {
+    expect(allowedOutcomes("winner")).toEqual(["yes", "no"]);
+    expect(allowedOutcomes("not-a-template")).toBeNull();
   });
 });

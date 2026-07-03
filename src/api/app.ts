@@ -3,12 +3,20 @@ import { healthRoute } from "./routes/health";
 import { createLiveRoute, type DbProvider } from "./routes/live";
 import { createAccountRoutes } from "./routes/account";
 import { createLeaderboardRoute } from "./routes/leaderboard";
+import {
+  createPredictionRoutes,
+  type PredictionRoutesOptions,
+} from "./routes/predictions";
 import { createAuthAdapterFromEnv, type AuthAdapter } from "./auth/adapter";
+import { createChainAdapterFromEnv, type ChainAdapter } from "../chain";
 import type { Database } from "../db/client";
 
 export type CreateAppOptions = {
   db?: Database;
   auth?: AuthAdapter;
+  /** Chain adapter shared with the prediction reconciler (see server.ts). */
+  chain?: ChainAdapter;
+  predictions?: PredictionRoutesOptions;
 };
 
 export function createApp(options: CreateAppOptions = {}) {
@@ -27,10 +35,15 @@ export function createApp(options: CreateAppOptions = {}) {
   // and refuses to start when NODE_ENV=production.
   const auth = options.auth ?? createAuthAdapterFromEnv();
 
+  // CHAIN_MODE=solana selects the mainnet adapter (HITL skeleton, issue 13);
+  // the in-memory stub is the default for dev and tests.
+  const chain = options.chain ?? createChainAdapterFromEnv();
+
   app.route("/api", healthRoute);
   app.route("/api", createLiveRoute(getDb));
   app.route("/api", createAccountRoutes(getDb, auth));
   app.route("/api", createLeaderboardRoute(getDb));
+  app.route("/api", createPredictionRoutes(getDb, auth, chain, options.predictions));
 
   return app;
 }
