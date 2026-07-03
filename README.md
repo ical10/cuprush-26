@@ -55,6 +55,31 @@ Vitest is split into two projects:
   additionally drops and recreates a dedicated `worldcup_hilo_test` database
   and applies migrations to it before each run.
 
+## Auth
+
+`AUTH_MODE` selects the auth adapter (`src/api/auth`):
+
+- `dev` (default) — local stub. Any `Authorization: Bearer dev:<id>` header
+  authenticates as the fake Privy user `<id>`. Logs a loud warning on start
+  and refuses to run when `NODE_ENV=production`.
+- `privy` — verifies real Privy access tokens via `@privy-io/server-auth`;
+  requires `PRIVY_APP_ID` and `PRIVY_APP_SECRET`.
+
+The first authenticated request provisions a `participants` row
+(kind=human) plus a `users` row mapping the Privy user id, in one
+transaction. No OTPs, emails, or raw tokens are stored.
+
+Semantics worth knowing:
+
+- `POST /api/logout` returns 204 and stores nothing — the backend is
+  stateless, so logout means the client clearing its Privy session.
+- `POST /api/wallet/delegation/revoke` records the revocation in
+  `participants.delegation_revoked_at`; the Privy-side revocation itself is
+  HITL until Privy credentials land.
+- `DELETE /api/me` anonymizes: deletes the `users` row and clears the
+  display name, but keeps the participant, wallet link, and predictions.
+  On-chain data cannot be erased — the client must disclose this first.
+
 ## Environment
 
 See `.env.example` for the full list. Nothing beyond `DATABASE_URL`, `PORT`,
