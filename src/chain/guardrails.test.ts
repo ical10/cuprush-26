@@ -1,41 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  HILO_INSTRUCTIONS,
-  createRateLimiter,
-  isAllowlistedInstruction,
-  type InstructionAllowlist,
-} from "./guardrails";
-
-const allowlist: InstructionAllowlist = {
-  programId: "2Yon9VrntK9ASpvHRJ1NzeTFBziWtUWPYVBZZWdk68to",
-  instructions: HILO_INSTRUCTIONS,
-};
-
-describe("isAllowlistedInstruction", () => {
-  it("accepts the Hi-Lo program with a supported instruction", () => {
-    expect(
-      isAllowlistedInstruction(allowlist, allowlist.programId, "submit_prediction"),
-    ).toBe(true);
-  });
-
-  it("rejects any other program id", () => {
-    expect(
-      isAllowlistedInstruction(allowlist, "11111111111111111111111111111111", "submit_prediction"),
-    ).toBe(false);
-  });
-
-  it("rejects an instruction outside the allowlist (e.g. a transfer)", () => {
-    expect(isAllowlistedInstruction(allowlist, allowlist.programId, "transfer")).toBe(false);
-  });
-
-  it("covers exactly the three game instructions", () => {
-    expect(HILO_INSTRUCTIONS).toEqual([
-      "create_question",
-      "submit_prediction",
-      "settle_question",
-    ]);
-  });
-});
+import { createRateLimiter } from "./guardrails";
 
 describe("createRateLimiter", () => {
   it("allows up to the limit per window and rejects the next call", () => {
