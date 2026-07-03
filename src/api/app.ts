@@ -3,6 +3,7 @@ import { healthRoute } from "./routes/health";
 import { createLiveRoute, type DbProvider } from "./routes/live";
 import { createAccountRoutes } from "./routes/account";
 import { createLeaderboardRoute } from "./routes/leaderboard";
+import { createQuestionsRoute } from "./routes/questions";
 import {
   createPredictionRoutes,
   type PredictionRoutesOptions,
@@ -43,6 +44,7 @@ export function createApp(options: CreateAppOptions = {}) {
   app.route("/api", createLiveRoute(getDb));
   app.route("/api", createAccountRoutes(getDb, auth));
   app.route("/api", createLeaderboardRoute(getDb));
+  app.route("/api", createQuestionsRoute(getDb));
   app.route("/api", createPredictionRoutes(getDb, auth, chain, options.predictions));
 
   return app;
