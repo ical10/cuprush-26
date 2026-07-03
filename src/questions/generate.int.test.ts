@@ -84,7 +84,10 @@ describe("generateQuestionsForFixture", () => {
       // benchmark by other tests in this file that use Argentina/France.
       homeTeam: "Brazil",
       awayTeam: "Germany",
-      startsAt: hoursFromNow(-3),
+      // Far in the future so this is always the *most recent* finished
+      // fixture before the target — other test files (settle, replay)
+      // leave finished fixtures near "now" in the shared DB.
+      startsAt: hoursFromNow(9_990),
       gameState: "finished",
       stats: {
         full_time: {
@@ -93,7 +96,7 @@ describe("generateQuestionsForFixture", () => {
         },
       },
     });
-    const fixtureId = await insertFixture({ startsAt: hoursFromNow(1) });
+    const fixtureId = await insertFixture({ startsAt: hoursFromNow(10_000) });
 
     const result = await generateQuestionsForFixture(db, fixtureId);
 
