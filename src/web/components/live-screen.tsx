@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { fetchMyPredictions } from "../lib/api";
 import { useLive } from "../hooks/use-live";
 import { usePrefersReducedMotion } from "../hooks/use-reduced-motion";
@@ -13,6 +13,7 @@ export function LiveScreen() {
   const [predictions, setPredictions] = useState<MyPrediction[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [flash, setFlash] = useState<Record<string, boolean>>({});
+  const seenSeq = useRef<Record<string, number>>({});
 
   useEffect(() => {
     fetchMyPredictions()
@@ -22,14 +23,20 @@ export function LiveScreen() {
 
   useEffect(() => {
     if (reducedMotion) return;
-    const ids = Object.keys(live);
-    if (ids.length === 0) return;
-    const flags: Record<string, boolean> = {};
-    for (const id of ids) flags[id] = true;
-    setFlash(flags);
+    // Flash only the fixtures whose sequence actually advanced this render,
+    // so an update to one match never animates every other live card.
+    const advanced: Record<string, boolean> = {};
+    for (const [id, update] of Object.entries(live)) {
+      if ((seenSeq.current[id] ?? -1) < update.seq) {
+        advanced[id] = true;
+        seenSeq.current[id] = update.seq;
+      }
+    }
+    if (Object.keys(advanced).length === 0) return;
+    setFlash(advanced);
     const timer = setTimeout(() => setFlash({}), 500);
     return () => clearTimeout(timer);
-  }, [live]);
+  }, [live, reducedMotion]);
 
   if (error) return <p className="empty-state">{error}</p>;
   if (!predictions) return <p className="empty-state">Loading your picks…</p>;
