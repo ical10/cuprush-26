@@ -15,7 +15,7 @@
   --color-popover: var(--surface);
   --color-popover-foreground: var(--text);
   --color-primary: var(--accent);
-  --color-primary-foreground: var(--bg);
+  --color-primary-foreground: var(--text);
   --color-secondary: var(--surface-2);
   --color-secondary-foreground: var(--text);
   --color-muted: var(--surface-2);
@@ -32,19 +32,25 @@
   --radius-xl: calc(var(--radius) + 4px);
 }
 
+/*
+ * Palette from tweakcn's community "Discord" theme (playful/cool/elegant
+ * tags) — blurple primary against a dark slate background, picked for a
+ * more fun/game-like feel than the original flat navy. Values below are
+ * its .dark variant (oklch), since this app is dark-only.
+ */
 :root {
   color-scheme: dark;
-  --bg: #0b1120;
-  --surface: #151e33;
-  --surface-2: #1e2a45;
-  --text: #f2f5fa;
-  --text-dim: #a7b3c9;
-  --accent: #5b9dff;
-  --danger: #ff6b6b;
+  --bg: oklch(0.2195 0.0077 285.74);
+  --surface: oklch(0.2624 0.0093 285.74);
+  --surface-2: oklch(0.2387 0.0114 293.1598);
+  --text: oklch(0.9881 0 0);
+  --text-dim: oklch(0.689 0 164.055);
+  --accent: oklch(0.5774 0.2091 273.85);
+  --danger: oklch(0.588 0.199 24.393);
   --win: #2fbf71;
   --lose: #ff8a5b;
-  --border: #2a3757;
-  --radius: 0.625rem;
+  --border: oklch(0.3089 0.0038 264.5091);
+  --radius: 0.75rem;
 }
 
 * {
