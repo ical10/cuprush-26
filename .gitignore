@@ -10,3 +10,4 @@ program/target/
 program/.anchor/
 SPEC.md
 tasks/
+.mcp.json
