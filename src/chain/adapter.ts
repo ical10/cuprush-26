@@ -31,11 +31,15 @@ export type ChainQuestion = ChainQuestionRule & {
   result: ChainQuestionResult | null;
 };
 
-export type ChainPrediction = {
+/**
+ * One batch commitment per player wallet: a single hash over all their
+ * predictions (see src/predictions/hash.ts), stored on chain instead of one
+ * account per answer. Seeds [b"batch", wallet].
+ */
+export type ChainBatch = {
   pda: string;
-  questionPda: string;
   wallet: string;
-  outcome: ChainOutcome;
+  batchHash: string;
   signature: string;
   submittedAt: Date;
 };
@@ -44,10 +48,7 @@ export type ChainErrorCode =
   | "invalid_window"
   | "question_exists"
   | "question_not_found"
-  | "question_not_open"
-  | "prediction_exists"
-  | "before_open"
-  | "after_lock"
+  | "batch_exists"
   | "already_settled"
   | "not_configured";
 
@@ -71,18 +72,18 @@ export function isChainError(
 export interface ChainAdapter {
   /** Deterministic Question address for seeds [b"question", rule_hash]. */
   deriveQuestionPda(ruleHash: string): string;
-  /** Deterministic Prediction address for seeds [b"prediction", question, wallet]. */
-  derivePredictionPda(questionPda: string, wallet: string): string;
+  /** Deterministic Batch address for seeds [b"batch", wallet]. */
+  deriveBatchPda(wallet: string): string;
   createQuestion(rule: ChainQuestionRule): Promise<{ pda: string }>;
-  submitPrediction(input: {
-    questionPda: string;
+  /** Commit one player's whole prediction batch by its hash. */
+  submitBatch(input: {
     wallet: string;
-    outcome: ChainOutcome;
+    batchHash: string;
   }): Promise<{ pda: string; signature: string }>;
   settleQuestion(input: {
     questionPda: string;
     result: ChainQuestionResult;
   }): Promise<{ signature: string }>;
   getQuestion(pda: string): Promise<ChainQuestion | null>;
-  getPrediction(pda: string): Promise<ChainPrediction | null>;
+  getBatch(pda: string): Promise<ChainBatch | null>;
 }

@@ -43,21 +43,18 @@ describe("stub PDA derivation", () => {
   it("derives base58 PDAs that fit the 44-char address columns", () => {
     const adapter = createStubChainAdapter({ clock });
     const questionPda = adapter.deriveQuestionPda("c".repeat(64));
-    const predictionPda = adapter.derivePredictionPda(questionPda, WALLET);
-    for (const pda of [questionPda, predictionPda]) {
+    const batchPda = adapter.deriveBatchPda(WALLET);
+    for (const pda of [questionPda, batchPda]) {
       expect(pda).toMatch(BASE58);
       expect(pda.length).toBeLessThanOrEqual(44);
     }
   });
 
-  it("derives the prediction PDA from (question, wallet) deterministically", () => {
+  it("derives the batch PDA from the wallet deterministically", () => {
     const adapter = createStubChainAdapter({ clock });
-    const questionPda = adapter.deriveQuestionPda("d".repeat(64));
-    expect(adapter.derivePredictionPda(questionPda, WALLET)).toBe(
-      adapter.derivePredictionPda(questionPda, WALLET),
-    );
-    expect(adapter.derivePredictionPda(questionPda, WALLET)).not.toBe(
-      adapter.derivePredictionPda(questionPda, "5".repeat(43)),
+    expect(adapter.deriveBatchPda(WALLET)).toBe(adapter.deriveBatchPda(WALLET));
+    expect(adapter.deriveBatchPda(WALLET)).not.toBe(
+      adapter.deriveBatchPda("5".repeat(43)),
     );
   });
 });
@@ -93,95 +90,49 @@ describe("stub createQuestion", () => {
   });
 });
 
-describe("stub submitPrediction", () => {
-  it("stores one prediction and returns pda + signature", async () => {
-    const adapter = createStubChainAdapter({ clock });
-    const { pda: questionPda } = await adapter.createQuestion(rule());
+describe("stub submitBatch", () => {
+  const HASH = "b".repeat(64);
 
-    const { pda, signature } = await adapter.submitPrediction({
-      questionPda,
+  it("stores one batch and returns pda + signature", async () => {
+    const adapter = createStubChainAdapter({ clock });
+
+    const { pda, signature } = await adapter.submitBatch({
       wallet: WALLET,
-      outcome: "yes",
+      batchHash: HASH,
     });
 
-    expect(pda).toBe(adapter.derivePredictionPda(questionPda, WALLET));
+    expect(pda).toBe(adapter.deriveBatchPda(WALLET));
     expect(signature).toMatch(BASE58);
     expect(signature.length).toBeLessThanOrEqual(88);
 
-    const prediction = await adapter.getPrediction(pda);
-    expect(prediction).toMatchObject({
+    const batch = await adapter.getBatch(pda);
+    expect(batch).toMatchObject({
       pda,
-      questionPda,
       wallet: WALLET,
-      outcome: "yes",
+      batchHash: HASH,
       signature,
       submittedAt: now,
     });
   });
 
-  it("rejects a second prediction for the same wallet and question", async () => {
+  it("rejects a second batch for the same wallet", async () => {
     const adapter = createStubChainAdapter({ clock });
-    const { pda: questionPda } = await adapter.createQuestion(rule());
-    await adapter.submitPrediction({ questionPda, wallet: WALLET, outcome: "yes" });
+    await adapter.submitBatch({ wallet: WALLET, batchHash: HASH });
 
     await expect(
-      adapter.submitPrediction({ questionPda, wallet: WALLET, outcome: "no" }),
-    ).rejects.toMatchObject({ code: "prediction_exists" });
+      adapter.submitBatch({ wallet: WALLET, batchHash: "c".repeat(64) }),
+    ).rejects.toMatchObject({ code: "batch_exists" });
 
-    const prediction = await adapter.getPrediction(
-      adapter.derivePredictionPda(questionPda, WALLET),
-    );
-    expect(prediction?.outcome).toBe("yes");
+    const batch = await adapter.getBatch(adapter.deriveBatchPda(WALLET));
+    expect(batch?.batchHash).toBe(HASH);
   });
 
-  it("allows different wallets to predict on the same question", async () => {
+  it("allows different wallets to each submit a batch", async () => {
     const adapter = createStubChainAdapter({ clock });
-    const { pda: questionPda } = await adapter.createQuestion(rule());
-    await adapter.submitPrediction({ questionPda, wallet: WALLET, outcome: "yes" });
+    await adapter.submitBatch({ wallet: WALLET, batchHash: HASH });
     await expect(
-      adapter.submitPrediction({ questionPda, wallet: "4".repeat(43), outcome: "no" }),
+      adapter.submitBatch({ wallet: "4".repeat(43), batchHash: HASH }),
     ).resolves.toBeDefined();
-  });
-
-  it("rejects before opens_at", async () => {
-    const adapter = createStubChainAdapter({ clock });
-    const { pda: questionPda } = await adapter.createQuestion(
-      rule({ opensAt: new Date(now.getTime() + 1), locksAt: new Date(now.getTime() + 60_000) }),
-    );
-    await expect(
-      adapter.submitPrediction({ questionPda, wallet: WALLET, outcome: "yes" }),
-    ).rejects.toMatchObject({ code: "before_open" });
-  });
-
-  it("rejects at and after locks_at", async () => {
-    const adapter = createStubChainAdapter({ clock });
-    const { pda: questionPda } = await adapter.createQuestion(
-      rule({ opensAt: new Date(now.getTime() - 60_000), locksAt: now }),
-    );
-    await expect(
-      adapter.submitPrediction({ questionPda, wallet: WALLET, outcome: "yes" }),
-    ).rejects.toMatchObject({ code: "after_lock" });
-  });
-
-  it("accepts exactly at opens_at", async () => {
-    const adapter = createStubChainAdapter({ clock });
-    const { pda: questionPda } = await adapter.createQuestion(
-      rule({ opensAt: now, locksAt: new Date(now.getTime() + 1) }),
-    );
-    await expect(
-      adapter.submitPrediction({ questionPda, wallet: WALLET, outcome: "yes" }),
-    ).resolves.toBeDefined();
-  });
-
-  it("rejects an unknown question", async () => {
-    const adapter = createStubChainAdapter({ clock });
-    await expect(
-      adapter.submitPrediction({
-        questionPda: adapter.deriveQuestionPda("e".repeat(64)),
-        wallet: WALLET,
-        outcome: "yes",
-      }),
-    ).rejects.toMatchObject({ code: "question_not_found" });
   });
 });
 
@@ -209,30 +160,20 @@ describe("stub settleQuestion", () => {
     const question = await adapter.getQuestion(questionPda);
     expect(question?.result).toBe("yes");
   });
-
-  it("refuses predictions on a settled question even inside the window", async () => {
-    const adapter = createStubChainAdapter({ clock });
-    const { pda: questionPda } = await adapter.createQuestion(rule());
-    await adapter.settleQuestion({ questionPda, result: "yes" });
-
-    await expect(
-      adapter.submitPrediction({ questionPda, wallet: WALLET, outcome: "yes" }),
-    ).rejects.toMatchObject({ code: "question_not_open" });
-  });
 });
 
 describe("stub reads", () => {
   it("returns null for unknown PDAs", async () => {
     const adapter = createStubChainAdapter({ clock });
     expect(await adapter.getQuestion("unknown")).toBeNull();
-    expect(await adapter.getPrediction("unknown")).toBeNull();
+    expect(await adapter.getBatch("unknown")).toBeNull();
   });
 });
 
 describe("ChainError", () => {
   it("carries a stable code", () => {
-    const error = new ChainError("after_lock");
-    expect(error.code).toBe("after_lock");
+    const error = new ChainError("batch_exists");
+    expect(error.code).toBe("batch_exists");
     expect(error).toBeInstanceOf(Error);
   });
 });
