@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { motion, useMotionValue, useTransform } from "framer-motion";
 import type { PanInfo } from "framer-motion";
 import { dragRotationDeg, outcomeFromDrag, SWIPE_VELOCITY_THRESHOLD } from "../lib/card-state";
+import { capitalizeOutcome } from "../lib/outcome-labels";
 import type { Question } from "../lib/types";
 
 type Props = {
@@ -70,7 +71,7 @@ export function QuestionCard({ question, onAnswer, disabled }: Props) {
           disabled={disabled}
           onClick={() => onAnswer(primary ?? "")}
         >
-          {primary}
+          {capitalizeOutcome(primary ?? "")}
         </button>
         <button
           type="button"
@@ -78,7 +79,7 @@ export function QuestionCard({ question, onAnswer, disabled }: Props) {
           disabled={disabled}
           onClick={() => onAnswer(secondary ?? "")}
         >
-          {secondary}
+          {capitalizeOutcome(secondary ?? "")}
         </button>
       </div>
     </div>
