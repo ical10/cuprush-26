@@ -3,7 +3,13 @@ import { usePrefersReducedMotion } from "../hooks/use-reduced-motion";
 
 export type TxState = "saving" | "locked" | "failed";
 
-export function TxStatus({ state, onRetry }: { state: TxState; onRetry?(): void }) {
+type Props = {
+  state: TxState;
+  message?: string | null;
+  onRetry?(): void;
+};
+
+export function TxStatus({ state, message, onRetry }: Props) {
   const reducedMotion = usePrefersReducedMotion();
 
   if (state === "saving") {
@@ -16,7 +22,7 @@ export function TxStatus({ state, onRetry }: { state: TxState; onRetry?(): void 
   if (state === "failed") {
     return (
       <p className="tx-status tx-failed" role="alert">
-        Save failed.{" "}
+        {message || "Save failed."}{" "}
         <button type="button" className="btn btn-link" onClick={onRetry}>
           Retry
         </button>

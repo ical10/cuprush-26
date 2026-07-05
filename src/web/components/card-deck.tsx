@@ -19,6 +19,7 @@ export function CardDeck({ onNavigateAuth }: Props) {
   const [txState, setTxState] = useState<TxState | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [lastAttempt, setLastAttempt] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   useEffect(() => {
     fetchQuestions()
@@ -46,7 +47,9 @@ export function CardDeck({ onNavigateAuth }: Props) {
     try {
       await submitPrediction(question.id, outcome);
       setTxState("locked");
-    } catch {
+      setSaveError(null);
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : "Save failed.");
       setTxState("failed");
     }
   }
@@ -106,6 +109,7 @@ export function CardDeck({ onNavigateAuth }: Props) {
         <div className="tx-panel">
           <TxStatus
             state={txState}
+            message={saveError}
             onRetry={() => current && lastAttempt && void save(current, lastAttempt)}
           />
         </div>
