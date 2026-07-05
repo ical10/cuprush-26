@@ -4,13 +4,17 @@ import { fixtures, predictions, questions, type FixtureStage } from "./schema";
 import { generateQuestionsForFixture } from "../questions/generate";
 
 /**
- * Local demo seed (not for production): one finished benchmark fixture plus
- * several upcoming fixtures across tournament stages, so the deterministic
- * generator makes ~10 open cards to swipe through. Lets you run `pnpm dev`
- * and immediately exercise a full deck instead of hitting the "no open
- * questions" empty state after one card. Re-runnable any time: each
- * upcoming fixture's kickoff is reset to "2h from now" on every run (and its
- * questions regenerated), so cards never go stale between demos.
+ * Local/staging demo seed only — refuses to run when NODE_ENV=production.
+ * Production fixtures/questions come exclusively from the TxLINE ingestion
+ * client (src/txline/*), never from this script.
+ *
+ * Inserts one finished benchmark fixture plus several upcoming fixtures
+ * across tournament stages, so the deterministic generator makes ~10 open
+ * cards to swipe through. Lets you run `pnpm dev` and immediately exercise
+ * a full deck instead of hitting the "no open questions" empty state after
+ * one card. Re-runnable any time: each upcoming fixture's kickoff is reset
+ * to "2h from now" on every run (and its questions regenerated), so cards
+ * never go stale between demos.
  */
 const UPCOMING_FIXTURES: { id: string; home: string; away: string; stage: FixtureStage }[] = [
   { id: "demo-upcoming-arg-fra", home: "Argentina", away: "France", stage: "semi_final" },
@@ -19,6 +23,14 @@ const UPCOMING_FIXTURES: { id: string; home: string; away: string; stage: Fixtur
 ];
 
 async function seedDemo() {
+  if (process.env.NODE_ENV === "production") {
+    throw new Error(
+      "Refusing to run: seed:demo inserts fake fixtures/questions and must " +
+        "never touch a production database. Production data comes only " +
+        "from the TxLINE ingestion client (src/txline/*).",
+    );
+  }
+
   const now = Date.now();
 
   const benchmarkId = "demo-benchmark-bra-ger";
