@@ -69,11 +69,27 @@ export type Prediction = {
   id: string;
   questionId: string;
   outcome: Outcome;
+  // Chain state now lives on the parent batch; surfaced per prediction by
+  // GET /api/predictions for convenience.
   chainStatus: ChainStatus;
-  predictionPda: string | null;
   signature: string | null;
   submittedAt: string | null;
   confirmedAt: string | null;
+};
+
+export type BatchAnswer = {
+  questionId: string;
+  outcome: string;
+};
+
+export type PredictionBatch = {
+  id: string;
+  batchHash: string;
+  chainStatus: ChainStatus;
+  signature: string | null;
+  submittedAt: string | null;
+  confirmedAt: string | null;
+  predictions: BatchAnswer[];
 };
 
 export type Me = {
