@@ -79,3 +79,8 @@ export function isCurrentlyWinning(
 export function winningLabel(winning: boolean): string {
   return winning ? "Currently winning" : "Currently losing";
 }
+
+/** Display-only: "yes" -> "Yes". The raw lowercase value is what gets submitted. */
+export function capitalizeOutcome(outcome: string): string {
+  return outcome ? outcome[0]!.toUpperCase() + outcome.slice(1) : outcome;
+}

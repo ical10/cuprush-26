@@ -51,7 +51,9 @@ describe("renderCopy", () => {
   it("renders the winner question with team names and Yes/No outcomes", () => {
     const copy = renderCopy(question({}), fixture);
     expect(copy.text).toBe("Will Argentina score more goals than Brazil?");
-    expect(copy.outcomes).toEqual(["Yes", "No"]);
+    // Raw canonical values, not display labels — this is what the client
+    // submits back to POST /api/predictions.
+    expect(copy.outcomes).toEqual(["yes", "no"]);
   });
 
   it("renders an intra-fixture stat comparison with Higher/Lower outcomes", () => {
@@ -64,7 +66,7 @@ describe("renderCopy", () => {
       fixture,
     );
     expect(copy.text).toBe("Will Argentina have more corners than Brazil?");
-    expect(copy.outcomes).toEqual(["Higher", "Lower"]);
+    expect(copy.outcomes).toEqual(["higher", "lower"]);
   });
 
   it("renders an inter-fixture corners benchmark question", () => {
@@ -73,7 +75,7 @@ describe("renderCopy", () => {
       fixture,
     );
     expect(copy.text).toContain("11 total corners");
-    expect(copy.outcomes).toEqual(["Higher", "Lower"]);
+    expect(copy.outcomes).toEqual(["higher", "lower"]);
   });
 
   it("renders an exact-margin goals question", () => {

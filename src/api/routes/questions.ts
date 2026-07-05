@@ -51,10 +51,13 @@ export function renderCopy(
   question: QuestionRow,
   fixture: FixtureRow,
 ): { text: string; outcomes: readonly string[] } {
+  // Raw canonical values (e.g. "yes"/"no"), not display labels — the client
+  // submits these back verbatim via POST /api/predictions, whose Zod schema
+  // only accepts yes|no|higher|lower. Capitalizing here previously made
+  // every submission 400, since the app used this same array as the button
+  // value. Capitalization is a display-only concern; see
+  // src/web/lib/outcome-labels.ts's capitalizeOutcome.
   const outcomes = allowedOutcomes(question.template) ?? ["yes", "no"];
-  const renderedOutcomes = outcomes.map(
-    (outcome) => outcome[0]?.toUpperCase() + outcome.slice(1),
-  );
 
   if (question.template === "winner") {
     const first = sideAndStat(question.statKey1);
@@ -62,7 +65,7 @@ export function renderCopy(
     if (first && second) {
       return {
         text: `Will ${teamName(fixture, first.side)} score more goals than ${teamName(fixture, second.side)}?`,
-        outcomes: renderedOutcomes,
+        outcomes,
       };
     }
   }
@@ -70,14 +73,14 @@ export function renderCopy(
   if (question.template === "period_corners_intra") {
     return {
       text: "Will second-half corners beat first-half corners?",
-      outcomes: renderedOutcomes,
+      outcomes,
     };
   }
 
   if (question.template === "corners_inter_benchmark") {
     return {
       text: `Previous match: ${question.benchmarkValue ?? "?"} total corners. Will this match finish Higher or Lower?`,
-      outcomes: renderedOutcomes,
+      outcomes,
     };
   }
 
@@ -86,7 +89,7 @@ export function renderCopy(
     const name = first ? teamName(fixture, first.side) : "this team";
     return {
       text: `Will ${name} score more goals than ${name} did last match (${question.benchmarkValue ?? "?"})?`,
-      outcomes: renderedOutcomes,
+      outcomes,
     };
   }
 
@@ -97,7 +100,7 @@ export function renderCopy(
     if (first && second) {
       return {
         text: `Will ${teamName(fixture, first.side)} score exactly ${threshold} more goal${threshold === 1 ? "" : "s"} than ${teamName(fixture, second.side)}?`,
-        outcomes: renderedOutcomes,
+        outcomes,
       };
     }
   }
@@ -111,11 +114,11 @@ export function renderCopy(
     const statLabel = STAT_LABEL[first.stat] ?? first.stat;
     return {
       text: `Will ${teamName(fixture, first.side)} have more ${statLabel} than ${teamName(fixture, second.side)}?`,
-      outcomes: renderedOutcomes,
+      outcomes,
     };
   }
 
-  return { text: "Prediction question", outcomes: renderedOutcomes };
+  return { text: "Prediction question", outcomes };
 }
 
 function questionPayload(question: QuestionRow, fixture: FixtureRow) {
