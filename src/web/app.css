@@ -131,6 +131,19 @@ button {
   font-size: 0.85rem;
 }
 
+.submit-screen {
+  align-items: center;
+  gap: 1.25rem;
+  padding-top: 2rem;
+}
+
+.submit-title {
+  margin: 0;
+  font-weight: 600;
+  font-size: 1.1rem;
+  text-align: center;
+}
+
 .empty-state {
   text-align: center;
   color: var(--text-dim);

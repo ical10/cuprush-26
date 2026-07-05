@@ -1,8 +1,10 @@
 import { getToken } from "./auth-storage";
 import type {
+  BatchAnswer,
   LeaderboardRow,
   Me,
   Prediction,
+  PredictionBatch,
   Question,
 } from "./types";
 
@@ -28,13 +30,12 @@ export function fetchQuestions(): Promise<Question[]> {
   return request("/questions");
 }
 
-export function submitPrediction(
-  questionId: string,
-  outcome: string,
-): Promise<Prediction> {
-  return request("/predictions", {
+export function submitPredictionBatch(
+  answers: BatchAnswer[],
+): Promise<PredictionBatch> {
+  return request("/predictions/batch", {
     method: "POST",
-    body: JSON.stringify({ questionId, outcome }),
+    body: JSON.stringify({ answers }),
   });
 }
 
