@@ -65,14 +65,11 @@ export function QuestionCard({ question, onAnswer, disabled }: Props) {
       </motion.div>
 
       <div className="card-buttons" role="group" aria-label="Answer this question">
-        <button
-          type="button"
-          className="btn btn-outcome"
-          disabled={disabled}
-          onClick={() => onAnswer(primary ?? "")}
-        >
-          {capitalizeOutcome(primary ?? "")}
-        </button>
+        {/*
+          Left = secondary (No/Lower), right = primary (Yes/Higher) —
+          matches outcomeFromDrag's drag-right -> outcomes[0]/primary
+          semantics, so the buttons and the swipe direction agree.
+        */}
         <button
           type="button"
           className="btn btn-outcome"
@@ -80,6 +77,14 @@ export function QuestionCard({ question, onAnswer, disabled }: Props) {
           onClick={() => onAnswer(secondary ?? "")}
         >
           {capitalizeOutcome(secondary ?? "")}
+        </button>
+        <button
+          type="button"
+          className="btn btn-outcome"
+          disabled={disabled}
+          onClick={() => onAnswer(primary ?? "")}
+        >
+          {capitalizeOutcome(primary ?? "")}
         </button>
       </div>
     </div>
