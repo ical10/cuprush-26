@@ -1,14 +1,20 @@
-import { and, desc, eq } from "drizzle-orm";
+import { desc, eq, inArray } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
-import { fixtures, predictions, questions } from "../../db/schema";
+import {
+  fixtures,
+  predictionBatches,
+  predictions,
+  questions,
+} from "../../db/schema";
 import type { ChainAdapter } from "../../chain";
 import {
   createRateLimiter,
   type RateLimiterOptions,
 } from "../../chain/guardrails";
 import { allowedOutcomes } from "../../questions/templates";
-import { submitPendingPrediction } from "../../predictions/reconciler";
+import { computeBatchHash } from "../../predictions/hash";
+import { submitPendingBatch } from "../../predictions/reconciler";
 import { renderCopy } from "./questions";
 import type { AuthAdapter } from "../auth/adapter";
 import {
@@ -17,44 +23,58 @@ import {
   type DbProvider,
 } from "../auth/middleware";
 
-export const postPredictionSchema = z.strictObject({
-  questionId: z.uuid(),
-  outcome: z.enum(["yes", "no", "higher", "lower"]),
+// The whole deck commits before the first match. Submissions must land
+// before this margin ahead of the earliest referenced fixture's kickoff.
+const LOCK_MARGIN_MS = 30 * 60_000;
+
+export const postBatchSchema = z.strictObject({
+  answers: z
+    .array(
+      z.strictObject({
+        questionId: z.uuid(),
+        outcome: z.enum(["yes", "no", "higher", "lower"]),
+      }),
+    )
+    .min(1),
 });
 
-// Sponsorship guardrail: a participant may not spam sponsored submissions.
-// The per-wallet-per-question cap is already structural (unique
-// (participant_id, question_id) + PDA seeds allow exactly one), so the only
-// runtime cap needed is submissions per participant per minute.
+// One batch submission per participant per minute is plenty — the batch is a
+// single call, so this only guards against a client retry-storming the route.
 const DEFAULT_RATE_LIMIT: RateLimiterOptions = { limit: 10, windowMs: 60_000 };
 
 export type PredictionRoutesOptions = {
   rateLimit?: RateLimiterOptions;
 };
 
+type BatchRow = typeof predictionBatches.$inferSelect;
 type PredictionRow = typeof predictions.$inferSelect;
 
-function predictionPayload(row: PredictionRow) {
+function batchPayload(
+  batch: BatchRow,
+  rows: Pick<PredictionRow, "questionId" | "outcome">[],
+) {
   return {
-    id: row.id,
-    questionId: row.questionId,
-    outcome: row.outcome,
-    chainStatus: row.chainStatus,
-    predictionPda: row.predictionPda,
-    signature: row.signature,
-    submittedAt: row.submittedAt,
-    confirmedAt: row.confirmedAt,
+    id: batch.id,
+    batchHash: batch.batchHash,
+    chainStatus: batch.chainStatus,
+    signature: batch.signature,
+    submittedAt: batch.submittedAt,
+    confirmedAt: batch.confirmedAt,
+    predictions: rows.map((row) => ({
+      questionId: row.questionId,
+      outcome: row.outcome,
+    })),
   };
 }
 
 /**
- * Prediction submission API (research doc "Prediction submission"):
- * insert a pending row on the unique (participant_id, question_id)
- * constraint, submit through the chain adapter, mark confirmed with the
- * signature. A duplicate request returns the existing row — never a second
- * transaction, never a changed answer. A chain failure leaves the row
- * pending with a backed-off retry for the reconciler
- * (src/predictions/reconciler.ts).
+ * Batched prediction submission. The whole deck (both matches, same day)
+ * commits at once: insert every prediction in one transaction, compute the
+ * canonical batch hash server-side from what was inserted, create the
+ * one-per-participant batch row, and submit that single hash on chain. A
+ * duplicate request returns the existing batch — never a second batch, never
+ * a changed answer. A chain failure leaves the batch pending with a
+ * backed-off retry for the reconciler (src/predictions/reconciler.ts).
  */
 export function createPredictionRoutes(
   getDb: DbProvider,
@@ -66,55 +86,30 @@ export function createPredictionRoutes(
   const requireAuth = createAuthMiddleware(auth, getDb);
   const rateLimiter = createRateLimiter(options.rateLimit ?? DEFAULT_RATE_LIMIT);
 
-  app.post("/predictions", requireAuth, async (c) => {
-    const body = postPredictionSchema.safeParse(
-      await c.req.json().catch(() => null),
-    );
+  app.post("/predictions/batch", requireAuth, async (c) => {
+    const body = postBatchSchema.safeParse(await c.req.json().catch(() => null));
     if (!body.success) {
       return c.json(
-        { error: "body must be { questionId: uuid, outcome: yes|no|higher|lower }" },
+        {
+          error:
+            "body must be { answers: [{ questionId: uuid, outcome: yes|no|higher|lower }] }",
+        },
         400,
       );
+    }
+
+    const answers = body.data.answers;
+    const questionIds = answers.map((a) => a.questionId);
+    if (new Set(questionIds).size !== questionIds.length) {
+      return c.json({ error: "duplicate questionId in batch" }, 400);
     }
 
     const participant = c.get("participant");
     if (!rateLimiter.allow(participant.id)) {
       return c.json({ error: "too many submissions, slow down" }, 429);
     }
-
-    const db = await getDb();
-    const [question] = await db
-      .select()
-      .from(questions)
-      .where(eq(questions.id, body.data.questionId));
-    if (!question) {
-      return c.json({ error: "question not found" }, 404);
-    }
-
-    const allowed = allowedOutcomes(question.template);
-    if (!allowed || !allowed.includes(body.data.outcome)) {
-      return c.json(
-        { error: `outcome must be one of: ${(allowed ?? []).join(", ")}` },
-        422,
-      );
-    }
-
-    // Not-open is checked here from Postgres and again on-chain by the
-    // program (and its stub): status plus the actual opens_at/locks_at
-    // window, so a lagging scheduler tick can never extend the window.
-    const now = new Date();
-    const inWindow =
-      now.getTime() >= question.opensAt.getTime() &&
-      now.getTime() < question.locksAt.getTime();
-    if (question.status !== "open" || !inWindow) {
-      return c.json({ error: "question is not open for predictions" }, 409);
-    }
-
     if (!participant.walletAddress) {
-      return c.json(
-        { error: "a wallet is required before saving a prediction" },
-        400,
-      );
+      return c.json({ error: "a wallet is required before saving predictions" }, 400);
     }
     if (participant.delegationRevokedAt) {
       return c.json(
@@ -123,56 +118,122 @@ export function createPredictionRoutes(
       );
     }
 
-    // Idempotent insert: the unique (participant_id, question_id)
-    // constraint decides who owns the row. A duplicate request gets the
-    // existing prediction back unchanged, whatever outcome it sent.
-    const [inserted] = await db
-      .insert(predictions)
-      .values({
-        participantId: participant.id,
-        questionId: question.id,
-        outcome: body.data.outcome,
-      })
-      .onConflictDoNothing({
-        target: [predictions.participantId, predictions.questionId],
-      })
-      .returning();
+    const db = await getDb();
 
-    if (!inserted) {
-      const [existing] = await db
+    // One batch ever per participant — a resubmit returns the existing one
+    // unchanged (immutable choice), never a second batch or chain call.
+    const [existing] = await db
+      .select()
+      .from(predictionBatches)
+      .where(eq(predictionBatches.participantId, participant.id));
+    if (existing) {
+      const rows = await db
         .select()
         .from(predictions)
-        .where(
-          and(
-            eq(predictions.participantId, participant.id),
-            eq(predictions.questionId, question.id),
-          ),
-        );
-      if (!existing) return c.json({ error: "prediction not found" }, 500);
-      return c.json(predictionPayload(existing), 200);
+        .where(eq(predictions.batchId, existing.id));
+      return c.json(batchPayload(existing, rows), 200);
     }
 
-    await submitPendingPrediction(db, chain, {
-      prediction: inserted,
-      question,
+    // Load every referenced question + its fixture in one shot.
+    const rows = await db
+      .select({ question: questions, fixture: fixtures })
+      .from(questions)
+      .innerJoin(fixtures, eq(questions.fixtureId, fixtures.id))
+      .where(inArray(questions.id, questionIds));
+    const byId = new Map(rows.map((r) => [r.question.id, r]));
+
+    for (const answer of answers) {
+      const row = byId.get(answer.questionId);
+      if (!row) {
+        return c.json({ error: `question not found: ${answer.questionId}` }, 404);
+      }
+      const allowed = allowedOutcomes(row.question.template);
+      if (!allowed || !allowed.includes(answer.outcome)) {
+        return c.json(
+          {
+            error: `outcome ${answer.outcome} not allowed for question ${answer.questionId}`,
+          },
+          422,
+        );
+      }
+    }
+
+    // One global cutoff: 30 min before the earliest kickoff across the
+    // batch's fixtures. All-or-nothing — a single answer past it rejects the
+    // whole batch.
+    const now = new Date();
+    const earliestKickoff = Math.min(
+      ...rows.map((r) => r.fixture.startsAt.getTime()),
+    );
+    if (now.getTime() >= earliestKickoff - LOCK_MARGIN_MS) {
+      return c.json({ error: "predictions are locked for this batch" }, 409);
+    }
+
+    const batchHash = computeBatchHash(answers);
+
+    let batch: BatchRow;
+    try {
+      batch = await db.transaction(async (tx) => {
+        const [created] = await tx
+          .insert(predictionBatches)
+          .values({ participantId: participant.id, batchHash })
+          .returning();
+        if (!created) throw new Error("batch insert failed");
+
+        await tx.insert(predictions).values(
+          answers.map((answer) => ({
+            participantId: participant.id,
+            questionId: answer.questionId,
+            outcome: answer.outcome,
+            batchId: created.id,
+          })),
+        );
+        return created;
+      });
+    } catch {
+      // Lost the one-batch-per-participant race: return the winner.
+      const [winner] = await db
+        .select()
+        .from(predictionBatches)
+        .where(eq(predictionBatches.participantId, participant.id));
+      if (!winner) return c.json({ error: "batch submission failed" }, 500);
+      const rows2 = await db
+        .select()
+        .from(predictions)
+        .where(eq(predictions.batchId, winner.id));
+      return c.json(batchPayload(winner, rows2), 200);
+    }
+
+    await submitPendingBatch(db, chain, {
+      batch,
       wallet: participant.walletAddress,
       now,
     });
 
     const [fresh] = await db
       .select()
+      .from(predictionBatches)
+      .where(eq(predictionBatches.id, batch.id));
+    const inserted = await db
+      .select()
       .from(predictions)
-      .where(eq(predictions.id, inserted.id));
-    return c.json(predictionPayload(fresh ?? inserted), 201);
+      .where(eq(predictions.batchId, batch.id));
+    return c.json(batchPayload(fresh ?? batch, inserted), 201);
   });
 
   app.get("/predictions", requireAuth, async (c) => {
     const db = await getDb();
     const rows = await db
-      .select({ prediction: predictions, question: questions, fixture: fixtures })
+      .select({
+        prediction: predictions,
+        question: questions,
+        fixture: fixtures,
+        batch: predictionBatches,
+      })
       .from(predictions)
       .innerJoin(questions, eq(predictions.questionId, questions.id))
       .innerJoin(fixtures, eq(questions.fixtureId, fixtures.id))
+      .innerJoin(predictionBatches, eq(predictions.batchId, predictionBatches.id))
       .where(eq(predictions.participantId, c.get("participant").id))
       .orderBy(desc(predictions.createdAt));
 
@@ -183,7 +244,14 @@ export function createPredictionRoutes(
         // display and evaluate a locked pick against the SSE stream.
         const copy = renderCopy(row.question, row.fixture);
         return {
-          ...predictionPayload(row.prediction),
+          id: row.prediction.id,
+          questionId: row.prediction.questionId,
+          outcome: row.prediction.outcome,
+          // Chain state lives on the parent batch now.
+          chainStatus: row.batch.chainStatus,
+          signature: row.batch.signature,
+          submittedAt: row.batch.submittedAt,
+          confirmedAt: row.batch.confirmedAt,
           question: {
             id: row.question.id,
             fixtureId: row.question.fixtureId,

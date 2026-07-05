@@ -8,7 +8,7 @@ import * as schema from "../db/schema";
 import { createStubChainAdapter, type ChainAdapter } from "../chain";
 import { createSettlementExecutor } from "./settle";
 
-const { fixtures, participants, predictions, questions } = schema;
+const { fixtures, participants, predictionBatches, predictions, questions } = schema;
 const sql = postgres(testDatabaseUrl(), { max: 10 });
 const db = drizzle(sql, { schema });
 
@@ -86,14 +86,33 @@ async function insertParticipant(overrides: Partial<typeof participants.$inferIn
   return row!;
 }
 
+async function confirmedBatch(participantId: string) {
+  const [row] = await db
+    .insert(predictionBatches)
+    .values({
+      participantId,
+      batchHash: randomBytes(32).toString("hex"),
+      chainStatus: "confirmed",
+    })
+    .onConflictDoNothing()
+    .returning();
+  if (row) return row;
+  const [existing] = await db
+    .select()
+    .from(predictionBatches)
+    .where(eq(predictionBatches.participantId, participantId));
+  return existing!;
+}
+
 async function insertConfirmedPrediction(
   questionId: string,
   participantId: string,
   outcome: "yes" | "no" | "higher" | "lower",
 ) {
+  const batch = await confirmedBatch(participantId);
   const [row] = await db
     .insert(predictions)
-    .values({ participantId, questionId, outcome, chainStatus: "confirmed" })
+    .values({ participantId, questionId, outcome, batchId: batch.id })
     .returning();
   return row!;
 }

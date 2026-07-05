@@ -4,10 +4,28 @@ import { eq } from "drizzle-orm";
 import postgres from "postgres";
 import { afterAll, describe, expect, it } from "vitest";
 import { testDatabaseUrl } from "./test/test-db";
-import { fixtures, participants, predictions, questions, users } from "./schema";
+import {
+  fixtures,
+  participants,
+  predictionBatches,
+  predictions,
+  questions,
+  users,
+} from "./schema";
 
 const sql = postgres(testDatabaseUrl(), { max: 1 });
-const db = drizzle(sql, { schema: { fixtures, participants, predictions, questions, users } });
+const db = drizzle(sql, {
+  schema: { fixtures, participants, predictionBatches, predictions, questions, users },
+});
+
+async function insertBatch(participantId: string) {
+  const [row] = await db
+    .insert(predictionBatches)
+    .values({ participantId, batchHash: `hash-${randomUUID()}` })
+    .returning();
+  if (!row) throw new Error("insert failed");
+  return row;
+}
 
 afterAll(async () => {
   await sql.end();
@@ -52,15 +70,41 @@ async function insertQuestion(fixtureId: string, ruleHash: string) {
 }
 
 describe("migrations", () => {
-  it("create the five core tables", async () => {
+  it("create the core tables", async () => {
     const rows = await sql<{ table_name: string }[]>`
       select table_name from information_schema.tables
       where table_schema = 'public' and table_type = 'BASE TABLE'
     `;
     const tableNames = rows.map((r) => r.table_name).sort();
     expect(tableNames).toEqual(
-      ["fixtures", "participants", "predictions", "questions", "users"].sort(),
+      [
+        "fixtures",
+        "participants",
+        "prediction_batches",
+        "predictions",
+        "questions",
+        "users",
+      ].sort(),
     );
+  });
+});
+
+describe("prediction_batches constraints", () => {
+  it("enforces one batch per participant", async () => {
+    const participant = await insertParticipant();
+    await insertBatch(participant.id);
+    await expect(insertBatch(participant.id)).rejects.toThrow();
+  });
+
+  it("rejects a negative attempt_count", async () => {
+    const participant = await insertParticipant();
+    await expect(
+      db.insert(predictionBatches).values({
+        participantId: participant.id,
+        batchHash: "hash",
+        attemptCount: -1,
+      }),
+    ).rejects.toThrow();
   });
 });
 
@@ -153,11 +197,13 @@ describe("predictions constraints", () => {
     const fixtureId = `fixture-${randomUUID()}`;
     await insertFixture(fixtureId);
     const question = await insertQuestion(fixtureId, `rule-${randomUUID()}`);
+    const batch = await insertBatch(participant.id);
 
     await db.insert(predictions).values({
       participantId: participant.id,
       questionId: question.id,
       outcome: "yes",
+      batchId: batch.id,
     });
 
     await expect(
@@ -165,6 +211,7 @@ describe("predictions constraints", () => {
         participantId: participant.id,
         questionId: question.id,
         outcome: "no",
+        batchId: batch.id,
       }),
     ).rejects.toThrow();
   });
@@ -174,11 +221,13 @@ describe("predictions constraints", () => {
     const fixtureId = `fixture-${randomUUID()}`;
     await insertFixture(fixtureId);
     const question = await insertQuestion(fixtureId, `rule-${randomUUID()}`);
+    const batch = await insertBatch(participant.id);
 
     await db.insert(predictions).values({
       participantId: participant.id,
       questionId: question.id,
       outcome: "yes",
+      batchId: batch.id,
     });
 
     await expect(

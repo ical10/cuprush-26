@@ -37,12 +37,12 @@ export function createSolanaChainAdapter(
 
   return {
     deriveQuestionPda: notImplemented,
-    derivePredictionPda: notImplemented,
+    deriveBatchPda: notImplemented,
     createQuestion: () => Promise.reject(makeNotImplementedError()),
-    submitPrediction: () => Promise.reject(makeNotImplementedError()),
+    submitBatch: () => Promise.reject(makeNotImplementedError()),
     settleQuestion: () => Promise.reject(makeNotImplementedError()),
     getQuestion: () => Promise.reject(makeNotImplementedError()),
-    getPrediction: () => Promise.reject(makeNotImplementedError()),
+    getBatch: () => Promise.reject(makeNotImplementedError()),
   };
 }
 

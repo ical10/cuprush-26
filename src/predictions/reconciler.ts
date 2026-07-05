@@ -1,26 +1,26 @@
 import { and, eq, isNull, lte, or } from "drizzle-orm";
 import type { Database } from "../db/client";
-import { participants, predictions, questions } from "../db/schema";
-import { isChainError, type ChainAdapter, type ChainPrediction } from "../chain";
+import { participants, predictionBatches, questions } from "../db/schema";
+import { isChainError, type ChainAdapter, type ChainBatch } from "../chain";
 
 /**
- * Postgres <-> chain state machine for predictions (research doc
- * "Idempotency, ordering, and recovery"). Every dual write is safe to
- * retry:
+ * Postgres <-> chain state machine for prediction batches (research doc
+ * "Idempotency, ordering, and recovery", batched variant). One batch per
+ * participant carries the on-chain commitment for their whole deck, so the
+ * dual-write retry logic lives here at the batch level:
  *
- * - Postgres-first crash (row pending, chain never reached): retry the
- *   sponsored submission with capped exponential backoff until the question
- *   locks, then mark the row failed.
- * - Chain-first crash (prediction on chain, row still pending): the
- *   Prediction PDA is deterministic from (question, wallet), so a reconciler
- *   pass reads it back and repairs the row to confirmed.
+ * - Postgres-first crash (batch row pending, chain never reached): retry the
+ *   sponsored submission with capped exponential backoff.
+ * - Chain-first crash (batch on chain, row still pending): the Batch PDA is
+ *   deterministic from the wallet, so a reconciler pass reads it back and
+ *   repairs the row to confirmed.
  *
- * `submitPendingPrediction` is the single submit path used by both the API
- * route (first attempt) and the periodic reconciler (retries + repair).
+ * `submitPendingBatch` is the single submit path used by both the API route
+ * (first attempt) and the periodic reconciler (retries + repair).
  */
 
 type QuestionRow = typeof questions.$inferSelect;
-type PredictionRow = typeof predictions.$inferSelect;
+type BatchRow = typeof predictionBatches.$inferSelect;
 
 export const BASE_RETRY_DELAY_MS = 30_000;
 export const MAX_RETRY_DELAY_MS = 10 * 60_000;
@@ -35,6 +35,8 @@ export function retryDelayMs(attemptCount: number): number {
  * Guarantees the Question account exists on chain and its PDA is recorded
  * on the questions row. Idempotent: the PDA is deterministic from the rule
  * hash, and a concurrent create losing the race is treated as success.
+ * Batches don't reference questions on chain, so settlement (which needs a
+ * question account to settle against) is now the caller of this.
  */
 export async function ensureQuestionOnChain(
   db: Database,
@@ -76,15 +78,15 @@ export async function ensureQuestionOnChain(
 /** Conditional pending->confirmed update; a repeat call is a no-op. */
 async function markConfirmed(
   db: Database,
-  predictionId: string,
-  chain: Pick<ChainPrediction, "pda" | "signature" | "submittedAt">,
+  batchId: string,
+  chain: Pick<ChainBatch, "pda" | "signature" | "submittedAt">,
   now: Date,
 ): Promise<void> {
   await db
-    .update(predictions)
+    .update(predictionBatches)
     .set({
       chainStatus: "confirmed",
-      predictionPda: chain.pda,
+      batchPda: chain.pda,
       signature: chain.signature,
       submittedAt: chain.submittedAt,
       confirmedAt: now,
@@ -92,94 +94,74 @@ async function markConfirmed(
       lastError: null,
     })
     .where(
-      and(eq(predictions.id, predictionId), eq(predictions.chainStatus, "pending")),
+      and(eq(predictionBatches.id, batchId), eq(predictionBatches.chainStatus, "pending")),
     );
 }
 
 async function scheduleRetry(
   db: Database,
-  prediction: Pick<PredictionRow, "id" | "attemptCount">,
+  batch: Pick<BatchRow, "id" | "attemptCount">,
   error: unknown,
   now: Date,
 ): Promise<void> {
-  const attemptCount = prediction.attemptCount + 1;
+  const attemptCount = batch.attemptCount + 1;
   await db
-    .update(predictions)
+    .update(predictionBatches)
     .set({
       attemptCount,
       nextRetryAt: new Date(now.getTime() + retryDelayMs(attemptCount)),
       lastError: error instanceof Error ? error.message : String(error),
     })
     .where(
-      and(eq(predictions.id, prediction.id), eq(predictions.chainStatus, "pending")),
-    );
-}
-
-async function markFailed(
-  db: Database,
-  predictionId: string,
-  reason: string,
-): Promise<void> {
-  await db
-    .update(predictions)
-    .set({ chainStatus: "failed", nextRetryAt: null, lastError: reason })
-    .where(
-      and(eq(predictions.id, predictionId), eq(predictions.chainStatus, "pending")),
+      and(eq(predictionBatches.id, batch.id), eq(predictionBatches.chainStatus, "pending")),
     );
 }
 
 /**
- * One idempotent chain-submit attempt for a pending row. Never throws:
- * success (or discovering the prediction already on chain) confirms the
- * row; any chain failure schedules a backed-off retry and leaves the row
- * pending for the reconciler.
+ * One idempotent chain-submit attempt for a pending batch. Never throws:
+ * success (or discovering the batch already on chain) confirms the row; any
+ * chain failure schedules a backed-off retry and leaves the row pending for
+ * the reconciler.
  */
-export async function submitPendingPrediction(
+export async function submitPendingBatch(
   db: Database,
   adapter: ChainAdapter,
   input: {
-    prediction: PredictionRow;
-    question: QuestionRow;
+    batch: BatchRow;
     wallet: string;
     now?: Date;
   },
 ): Promise<"confirmed" | "pending"> {
-  const { prediction, question, wallet } = input;
+  const { batch, wallet } = input;
   const now = input.now ?? new Date();
 
   try {
-    const questionPda = await ensureQuestionOnChain(db, adapter, question);
-    const predictionPda = adapter.derivePredictionPda(questionPda, wallet);
+    const batchPda = adapter.deriveBatchPda(wallet);
 
     // Chain-first crash repair: the deterministic PDA may already hold this
-    // prediction even though the row is still pending.
-    const existing = await adapter.getPrediction(predictionPda);
+    // batch even though the row is still pending.
+    const existing = await adapter.getBatch(batchPda);
     if (existing) {
-      await markConfirmed(db, prediction.id, existing, now);
+      await markConfirmed(db, batch.id, existing, now);
       return "confirmed";
     }
 
-    const { pda, signature } = await adapter.submitPrediction({
-      questionPda,
+    const { pda, signature } = await adapter.submitBatch({
       wallet,
-      outcome: prediction.outcome,
+      batchHash: batch.batchHash,
     });
-    await markConfirmed(db, prediction.id, { pda, signature, submittedAt: now }, now);
+    await markConfirmed(db, batch.id, { pda, signature, submittedAt: now }, now);
     return "confirmed";
   } catch (error) {
-    if (isChainError(error, "prediction_exists")) {
-      // Raced with another submit of the same prediction: read it back.
-      const questionPda =
-        question.questionPda ?? adapter.deriveQuestionPda(question.ruleHash);
-      const onChain = await adapter.getPrediction(
-        adapter.derivePredictionPda(questionPda, wallet),
-      );
+    if (isChainError(error, "batch_exists")) {
+      // Raced with another submit of the same batch: read it back.
+      const onChain = await adapter.getBatch(adapter.deriveBatchPda(wallet));
       if (onChain) {
-        await markConfirmed(db, prediction.id, onChain, now);
+        await markConfirmed(db, batch.id, onChain, now);
         return "confirmed";
       }
     }
-    await scheduleRetry(db, prediction, error, now);
+    await scheduleRetry(db, batch, error, now);
     return "pending";
   }
 }
@@ -188,100 +170,59 @@ export type ReconcileResult = {
   scanned: number;
   confirmed: number;
   retried: number;
-  failed: number;
 };
 
 /**
- * One reconciler pass: retries due pending predictions, repairs rows whose
- * prediction already reached the chain, and fails rows whose question
- * locked before the chain confirmed.
+ * One reconciler pass: retries due pending batches and repairs rows whose
+ * batch already reached the chain.
  */
-export async function reconcilePendingPredictions(
+export async function reconcilePendingBatches(
   db: Database,
   adapter: ChainAdapter,
   now = new Date(),
 ): Promise<ReconcileResult> {
   const due = await db
     .select({
-      prediction: predictions,
-      question: questions,
+      batch: predictionBatches,
       wallet: participants.walletAddress,
     })
-    .from(predictions)
-    .innerJoin(questions, eq(predictions.questionId, questions.id))
-    .innerJoin(participants, eq(predictions.participantId, participants.id))
+    .from(predictionBatches)
+    .innerJoin(participants, eq(predictionBatches.participantId, participants.id))
     .where(
       and(
-        eq(predictions.chainStatus, "pending"),
-        or(isNull(predictions.nextRetryAt), lte(predictions.nextRetryAt, now)),
+        eq(predictionBatches.chainStatus, "pending"),
+        or(isNull(predictionBatches.nextRetryAt), lte(predictionBatches.nextRetryAt, now)),
       ),
     );
 
-  const result: ReconcileResult = {
-    scanned: due.length,
-    confirmed: 0,
-    retried: 0,
-    failed: 0,
-  };
+  const result: ReconcileResult = { scanned: due.length, confirmed: 0, retried: 0 };
 
   for (const row of due) {
     try {
-      result[await reconcileRow(db, adapter, row, now)] += 1;
+      if (!row.wallet) {
+        // Unreachable through the API (a wallet is required to submit), but a
+        // row without one can only wait — retry until it appears.
+        await scheduleRetry(db, row.batch, new Error("participant has no wallet"), now);
+        result.retried += 1;
+        continue;
+      }
+      const outcome = await submitPendingBatch(db, adapter, {
+        batch: row.batch,
+        wallet: row.wallet,
+        now,
+      });
+      result[outcome === "confirmed" ? "confirmed" : "retried"] += 1;
     } catch (error) {
       console.error(
         JSON.stringify({
-          event: "prediction_reconcile_error",
-          predictionId: row.prediction.id,
+          event: "batch_reconcile_error",
+          batchId: row.batch.id,
           error: error instanceof Error ? error.message : String(error),
         }),
       );
     }
   }
   return result;
-}
-
-async function reconcileRow(
-  db: Database,
-  adapter: ChainAdapter,
-  row: { prediction: PredictionRow; question: QuestionRow; wallet: string | null },
-  now: Date,
-): Promise<"confirmed" | "retried" | "failed"> {
-  const locked = now.getTime() >= row.question.locksAt.getTime();
-
-  if (locked) {
-    // Last-chance repair: a chain-first crash right before lock may have
-    // left the prediction on chain with the row still pending.
-    if (row.wallet && row.question.questionPda) {
-      const onChain = await adapter.getPrediction(
-        adapter.derivePredictionPda(row.question.questionPda, row.wallet),
-      );
-      if (onChain) {
-        await markConfirmed(db, row.prediction.id, onChain, now);
-        return "confirmed";
-      }
-    }
-    await markFailed(
-      db,
-      row.prediction.id,
-      "question locked before the prediction reached the chain",
-    );
-    return "failed";
-  }
-
-  if (!row.wallet) {
-    // Unreachable through the API (a wallet is required to submit), but a
-    // row without one can only wait — retry until the question locks.
-    await scheduleRetry(db, row.prediction, new Error("participant has no wallet"), now);
-    return "retried";
-  }
-
-  const outcome = await submitPendingPrediction(db, adapter, {
-    prediction: row.prediction,
-    question: row.question,
-    wallet: row.wallet,
-    now,
-  });
-  return outcome === "confirmed" ? "confirmed" : "retried";
 }
 
 export type PredictionReconcilerOptions = {
@@ -305,7 +246,7 @@ export function createPredictionReconciler(
   let timer: ReturnType<typeof setInterval> | undefined;
 
   const tick = () =>
-    reconcilePendingPredictions(options.db, options.adapter, clock());
+    reconcilePendingBatches(options.db, options.adapter, clock());
 
   return {
     start() {

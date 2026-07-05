@@ -1,8 +1,14 @@
 import { and, eq, isNull, lte, or, sql } from "drizzle-orm";
 import type { Database } from "../db/client";
-import { fixtures, participants, predictions, questions } from "../db/schema";
+import {
+  fixtures,
+  participants,
+  predictionBatches,
+  predictions,
+  questions,
+} from "../db/schema";
 import { isChainError, type ChainAdapter, type ChainQuestionResult } from "../chain";
-import { retryDelayMs } from "../predictions/reconciler";
+import { ensureQuestionOnChain, retryDelayMs } from "../predictions/reconciler";
 import { evaluateQuestion } from "./evaluate";
 import { isSettlingOverdue } from "./scheduler";
 import type { TemplateId } from "./types";
@@ -62,16 +68,20 @@ async function commitSettlement(
 
     if (!settled) return; // already settled by a previous pass
 
-    const confirmed = await tx
-      .select()
+    // Only score predictions whose parent batch confirmed on chain (the
+    // batch carries the commitment now, not the per-prediction row).
+    const confirmedRows = await tx
+      .select({ prediction: predictions })
       .from(predictions)
+      .innerJoin(predictionBatches, eq(predictions.batchId, predictionBatches.id))
       .where(
         and(
           eq(predictions.questionId, question.id),
-          eq(predictions.chainStatus, "confirmed"),
+          eq(predictionBatches.chainStatus, "confirmed"),
           isNull(predictions.scoredAt),
         ),
       );
+    const confirmed = confirmedRows.map((row) => row.prediction);
 
     for (const prediction of confirmed) {
       if (result === "push") {
@@ -224,14 +234,20 @@ async function settleOne(
     return false;
   }
 
-  if (!question.questionPda) {
-    await scheduleRetry(db, question, new Error("question has no on-chain PDA"), now);
+  // The question account must exist on chain to settle against. Batches no
+  // longer create it (they commit a hash keyed by wallet), so settlement is
+  // now the path that lazily creates + records the Question PDA.
+  let questionPda: string;
+  try {
+    questionPda = await ensureQuestionOnChain(db, chain, question);
+  } catch (error) {
+    await scheduleRetry(db, question, error, now);
     return false;
   }
 
   try {
     const { signature } = await chain.settleQuestion({
-      questionPda: question.questionPda,
+      questionPda,
       result: evaluated.result,
     });
     await commitSettlement(db, question, evaluated.result, signature, now);
@@ -241,7 +257,7 @@ async function settleOne(
       // Crash-repair: chain settled already but Postgres crashed before
       // committing. Chain is the source of truth — use its recorded
       // result, not a fresh re-derivation from stats.
-      const onChain = await chain.getQuestion(question.questionPda);
+      const onChain = await chain.getQuestion(questionPda);
       if (onChain?.result) {
         await commitSettlement(
           db,

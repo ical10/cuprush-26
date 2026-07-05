@@ -227,6 +227,48 @@ export const predictionChainStatus = pgEnum("prediction_chain_status", [
   "failed",
 ]);
 
+/**
+ * One batch per participant holds the on-chain commitment for all their
+ * predictions (research doc "Prediction submission", batched variant). The
+ * chain fields that used to live per-prediction row moved here: a single
+ * batch hash is submitted on chain instead of one PDA per answer.
+ */
+export const predictionBatches = pgTable(
+  "prediction_batches",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    // One batch ever per participant — the whole deck commits at once.
+    participantId: uuid("participant_id")
+      .notNull()
+      .unique()
+      .references(() => participants.id, { onDelete: "restrict" }),
+    // sha256 hex of the canonical sorted questionId:outcome pairs — see
+    // src/predictions/hash.ts. Recomputed server-side, never client-supplied.
+    batchHash: text("batch_hash").notNull(),
+    batchPda: varchar("batch_pda", { length: 44 }).unique(),
+    chainStatus: predictionChainStatus("chain_status")
+      .notNull()
+      .default("pending"),
+    signature: varchar("signature", { length: 88 }),
+    submittedAt: timestamp("submitted_at", { withTimezone: true }),
+    confirmedAt: timestamp("confirmed_at", { withTimezone: true }),
+    // Chain-submit retry bookkeeping: capped exponential backoff while the
+    // row is pending. See src/predictions/reconciler.ts.
+    attemptCount: integer("attempt_count").notNull().default(0),
+    nextRetryAt: timestamp("next_retry_at", { withTimezone: true }),
+    lastError: text("last_error"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (batch) => [
+    check(
+      "prediction_batches_attempt_count_nonnegative",
+      sql`${batch.attemptCount} >= 0`,
+    ),
+  ],
+);
+
 export const predictions = pgTable(
   "predictions",
   {
@@ -240,20 +282,11 @@ export const predictions = pgTable(
       .notNull()
       .references(() => questions.id),
     outcome: predictionOutcome("outcome").notNull(),
-    predictionPda: varchar("prediction_pda", { length: 44 }).unique(),
-    chainStatus: predictionChainStatus("chain_status")
+    // The batch carrying this prediction's on-chain commitment.
+    batchId: uuid("batch_id")
       .notNull()
-      .default("pending"),
-    signature: varchar("signature", { length: 88 }),
-    submittedAt: timestamp("submitted_at", { withTimezone: true }),
-    confirmedAt: timestamp("confirmed_at", { withTimezone: true }),
+      .references(() => predictionBatches.id, { onDelete: "restrict" }),
     scoredAt: timestamp("scored_at", { withTimezone: true }),
-    // Chain-submit retry bookkeeping: capped exponential backoff while the
-    // row is pending, until the question locks (then failed). See
-    // src/predictions/reconciler.ts.
-    attemptCount: integer("attempt_count").notNull().default(0),
-    nextRetryAt: timestamp("next_retry_at", { withTimezone: true }),
-    lastError: text("last_error"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -263,10 +296,6 @@ export const predictions = pgTable(
     unique("predictions_participant_question_unique").on(
       prediction.participantId,
       prediction.questionId,
-    ),
-    check(
-      "predictions_attempt_count_nonnegative",
-      sql`${prediction.attemptCount} >= 0`,
     ),
   ],
 );

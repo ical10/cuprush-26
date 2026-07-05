@@ -43,6 +43,13 @@
       "when": 1783050505981,
       "tag": "0005_boring_medusa",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1783257987662,
+      "tag": "0006_purple_paladin",
+      "breakpoints": true
     }
   ]
 }
