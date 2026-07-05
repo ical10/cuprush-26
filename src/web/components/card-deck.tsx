@@ -71,16 +71,23 @@ export function CardDeck({ onNavigateAuth }: Props) {
 
   if (error) return <p className="empty-state">{error}</p>;
   if (!questions) return <p className="empty-state">Loading questions…</p>;
+  const total = questions.length;
+  const swiped = Math.min(index, total);
   if (!current) {
     return (
       <p className="empty-state">
-        No open questions right now. Check back closer to kickoff.
+        {total > 0
+          ? `You've swiped ${swiped} of ${total} questions.`
+          : "No open questions right now. Check back closer to kickoff."}
       </p>
     );
   }
 
   return (
     <div className="screen deck-screen">
+      <p className="deck-progress">
+        Card {index + 1} of {total}
+      </p>
       <QuestionCard
         question={current}
         onAnswer={handleAnswer}
