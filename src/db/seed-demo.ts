@@ -1,6 +1,6 @@
-import { and, eq, gt, lte } from "drizzle-orm";
+import { and, eq, gt, inArray, lte } from "drizzle-orm";
 import { db, queryClient } from "./client";
-import { fixtures, questions, type FixtureStage } from "./schema";
+import { fixtures, predictions, questions, type FixtureStage } from "./schema";
 import { generateQuestionsForFixture } from "../questions/generate";
 
 /**
@@ -68,7 +68,21 @@ async function seedDemo() {
     // Regenerate from scratch each run: opens_at/locks_at (and the rule
     // hash's benchmark snapshot) are derived from startsAt, so stale rows
     // from a previous run must go rather than silently stick around
-    // locked/expired.
+    // locked/expired. Predictions against those stale questions block the
+    // delete (FK) once you've actually swiped a demo card, so clear them
+    // first — this is local demo data, never real user history.
+    const staleQuestionIds = await db
+      .select({ id: questions.id })
+      .from(questions)
+      .where(eq(questions.fixtureId, fixture.id));
+    if (staleQuestionIds.length > 0) {
+      await db.delete(predictions).where(
+        inArray(
+          predictions.questionId,
+          staleQuestionIds.map((q) => q.id),
+        ),
+      );
+    }
     await db.delete(questions).where(eq(questions.fixtureId, fixture.id));
 
     const { inserted } = await generateQuestionsForFixture(db, fixture.id);
