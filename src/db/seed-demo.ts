@@ -1,23 +1,27 @@
 import { and, eq, gt, lte } from "drizzle-orm";
 import { db, queryClient } from "./client";
-import { fixtures, questions } from "./schema";
+import { fixtures, questions, type FixtureStage } from "./schema";
 import { generateQuestionsForFixture } from "../questions/generate";
 
 /**
  * Local demo seed (not for production): one finished benchmark fixture plus
- * one fixture kicking off in ~2 hours, so the deterministic generator makes
- * a winner card plus an inter-fixture benchmark card, both inside their open
- * window right now. Lets you run `pnpm dev` and immediately swipe real cards
- * instead of hitting the "no open questions" empty state. Re-runnable any
- * time: the upcoming fixture's kickoff is reset to "2h from now" on every
- * run (and its questions regenerated), so cards never go stale between demos.
+ * several upcoming fixtures across tournament stages, so the deterministic
+ * generator makes ~10 open cards to swipe through. Lets you run `pnpm dev`
+ * and immediately exercise a full deck instead of hitting the "no open
+ * questions" empty state after one card. Re-runnable any time: each
+ * upcoming fixture's kickoff is reset to "2h from now" on every run (and its
+ * questions regenerated), so cards never go stale between demos.
  */
+const UPCOMING_FIXTURES: { id: string; home: string; away: string; stage: FixtureStage }[] = [
+  { id: "demo-upcoming-arg-fra", home: "Argentina", away: "France", stage: "semi_final" },
+  { id: "demo-upcoming-bra-eng", home: "Brazil", away: "England", stage: "semi_final" },
+  { id: "demo-upcoming-esp-ned", home: "Spain", away: "Netherlands", stage: "group" },
+];
+
 async function seedDemo() {
   const now = Date.now();
 
   const benchmarkId = "demo-benchmark-bra-ger";
-  const upcomingId = "demo-upcoming-arg-fra";
-
   await db
     .insert(fixtures)
     .values({
@@ -39,52 +43,59 @@ async function seedDemo() {
     })
     .onConflictDoNothing();
 
-  const upcomingStartsAt = new Date(now + 2 * 60 * 60 * 1000);
-  await db
-    .insert(fixtures)
-    .values({
-      id: upcomingId,
-      homeTeam: "Argentina",
-      awayTeam: "France",
-      // Kickoff in 2h → opens_at (kickoff−6h) is past and locks_at
-      // (kickoff−30m) is future, so its questions are open to answer now.
-      startsAt: upcomingStartsAt,
-      gameState: "scheduled",
-      stage: "early_knockout",
-    })
-    .onConflictDoUpdate({
-      target: fixtures.id,
-      set: { startsAt: upcomingStartsAt, gameState: "scheduled" },
-    });
+  let totalOpened = 0;
+  const summary: string[] = [];
 
-  // Regenerate from scratch each run: opens_at/locks_at (and the rule hash's
-  // benchmark snapshot) are derived from startsAt, so stale rows from a
-  // previous run must go rather than silently stick around locked/expired.
-  await db.delete(questions).where(eq(questions.fixtureId, upcomingId));
+  for (const fixture of UPCOMING_FIXTURES) {
+    const startsAt = new Date(now + 2 * 60 * 60 * 1000);
+    await db
+      .insert(fixtures)
+      .values({
+        id: fixture.id,
+        homeTeam: fixture.home,
+        awayTeam: fixture.away,
+        // Kickoff in 2h → opens_at (kickoff−6h) is past and locks_at
+        // (kickoff−30m) is future, so its questions are open to answer now.
+        startsAt,
+        gameState: "scheduled",
+        stage: fixture.stage,
+      })
+      .onConflictDoUpdate({
+        target: fixtures.id,
+        set: { startsAt, gameState: "scheduled", stage: fixture.stage },
+      });
 
-  const { attempted, inserted } = await generateQuestionsForFixture(db, upcomingId);
+    // Regenerate from scratch each run: opens_at/locks_at (and the rule
+    // hash's benchmark snapshot) are derived from startsAt, so stale rows
+    // from a previous run must go rather than silently stick around
+    // locked/expired.
+    await db.delete(questions).where(eq(questions.fixtureId, fixture.id));
 
-  // Force this fixture's currently-in-window questions to `open`. A running
-  // scheduler would do this within a minute, but the seed should leave them
-  // immediately swipeable without waiting for (or running) the server.
-  const nowDate = new Date();
-  const opened = await db
-    .update(questions)
-    .set({ status: "open" })
-    .where(
-      and(
-        eq(questions.fixtureId, upcomingId),
-        eq(questions.status, "scheduled"),
-        lte(questions.opensAt, nowDate),
-        gt(questions.locksAt, nowDate),
-      ),
-    )
-    .returning({ id: questions.id, template: questions.template });
+    const { inserted } = await generateQuestionsForFixture(db, fixture.id);
 
-  console.log(
-    `seed:demo — generated ${inserted.length}/${attempted} question(s), ` +
-      `opened ${opened.length}: ${opened.map((q) => q.template).join(", ") || "none"}`,
-  );
+    // Force this fixture's currently-in-window questions to `open`. A
+    // running scheduler would do this within a minute, but the seed should
+    // leave them immediately swipeable without waiting for (or running)
+    // the server.
+    const nowDate = new Date();
+    const opened = await db
+      .update(questions)
+      .set({ status: "open" })
+      .where(
+        and(
+          eq(questions.fixtureId, fixture.id),
+          eq(questions.status, "scheduled"),
+          lte(questions.opensAt, nowDate),
+          gt(questions.locksAt, nowDate),
+        ),
+      )
+      .returning({ id: questions.id });
+
+    totalOpened += opened.length;
+    summary.push(`${fixture.home} vs ${fixture.away}: ${opened.length}/${inserted.length}`);
+  }
+
+  console.log(`seed:demo — ${totalOpened} open card(s) total\n  ${summary.join("\n  ")}`);
 
   await queryClient.end({ timeout: 5 });
 }
