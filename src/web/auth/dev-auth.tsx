@@ -1,6 +1,8 @@
 import { useState } from "react";
 import type { FormEvent } from "react";
 import { useAuth } from "./auth-context";
+import { saveWalletAddress } from "../lib/api";
+import { randomDemoWalletAddress } from "../lib/demo-wallet";
 
 /**
  * VITE_AUTH_MODE=dev (the default): mints a `dev:<name>` bearer token
@@ -11,11 +13,15 @@ export function DevAuth({ onDone }: { onDone(): void }) {
   const { login } = useAuth();
   const [name, setName] = useState("");
 
-  const handleSubmit = (event: FormEvent) => {
+  const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
     const trimmed = name.trim();
     if (!trimmed) return;
     login(`dev:${trimmed}`);
+    // A real embedded wallet comes from Privy once credentials exist; the
+    // dev stub provisions a placeholder one immediately so predictions
+    // aren't blocked on the "wallet required" check right after signing in.
+    await saveWalletAddress(randomDemoWalletAddress()).catch(() => {});
     onDone();
   };
 

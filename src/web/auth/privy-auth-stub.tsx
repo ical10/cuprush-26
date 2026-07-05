@@ -24,14 +24,20 @@
  * AUTH_MODE=privy adapter already verifies it — src/api/auth/privy.ts).
  */
 import { useAuth } from "./auth-context";
+import { saveWalletAddress } from "../lib/api";
+import { randomDemoWalletAddress } from "../lib/demo-wallet";
 
 export function PrivyAuthStub({ onDone }: { onDone(): void }) {
   const { login } = useAuth();
 
-  const handleClick = () => {
+  const handleClick = async () => {
     // Demo-only placeholder token so the flow is exercisable before real
     // Privy credentials exist; never used when AUTH_MODE=privy on the server.
     login("dev:privy-stub-user");
+    // Real Privy wallet creation happens client-side once wired; the stub
+    // provisions a placeholder wallet so predictions aren't blocked on the
+    // "wallet required" check right after signing in.
+    await saveWalletAddress(randomDemoWalletAddress()).catch(() => {});
     onDone();
   };
 
