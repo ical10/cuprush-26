@@ -8,3 +8,5 @@ coverage/
 .DS_Store
 program/target/
 program/.anchor/
+SPEC.md
+tasks/
