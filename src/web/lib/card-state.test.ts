@@ -19,6 +19,15 @@ describe("outcomeFromDrag", () => {
     expect(outcomeFromDrag(50, ["yes", "no"], 40)).toBe("yes");
     expect(outcomeFromDrag(30, ["yes", "no"], 40)).toBeNull();
   });
+
+  it("commits on a fast flick even under the distance threshold", () => {
+    expect(outcomeFromDrag(20, ["higher", "lower"], 80, 600)).toBe("higher");
+    expect(outcomeFromDrag(-20, ["higher", "lower"], 80, -600)).toBe("lower");
+  });
+
+  it("does not commit a slow drag under the distance threshold", () => {
+    expect(outcomeFromDrag(20, ["higher", "lower"], 80, 50)).toBeNull();
+  });
 });
 
 describe("dragRotationDeg", () => {
