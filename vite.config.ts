@@ -1,5 +1,7 @@
+import path from "node:path";
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import tailwindcss from "@tailwindcss/vite";
 import { VitePWA } from "vite-plugin-pwa";
 
 const API_PORT = process.env.PORT ?? "3000";
@@ -7,6 +9,11 @@ const API_PORT = process.env.PORT ?? "3000";
 export default defineConfig({
   root: "src/web",
   publicDir: "public",
+  resolve: {
+    alias: {
+      "@": path.resolve(__dirname, "src/web"),
+    },
+  },
   build: {
     outDir: "../../dist/client",
     emptyOutDir: true,
@@ -21,6 +28,7 @@ export default defineConfig({
   },
   plugins: [
     react(),
+    tailwindcss(),
     VitePWA({
       registerType: "autoUpdate",
       includeAssets: ["favicon.svg"],
