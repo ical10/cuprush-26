@@ -8,9 +8,9 @@ import { generateQuestionsForFixture } from "../questions/generate";
  * one fixture kicking off in ~2 hours, so the deterministic generator makes
  * a winner card plus an inter-fixture benchmark card, both inside their open
  * window right now. Lets you run `pnpm dev` and immediately swipe real cards
- * instead of hitting the "no open questions" empty state. Idempotent: fixed
- * fixture ids + the generator's rule-hash unique constraint mean re-running
- * inserts nothing new.
+ * instead of hitting the "no open questions" empty state. Re-runnable any
+ * time: the upcoming fixture's kickoff is reset to "2h from now" on every
+ * run (and its questions regenerated), so cards never go stale between demos.
  */
 async function seedDemo() {
   const now = Date.now();
@@ -39,6 +39,7 @@ async function seedDemo() {
     })
     .onConflictDoNothing();
 
+  const upcomingStartsAt = new Date(now + 2 * 60 * 60 * 1000);
   await db
     .insert(fixtures)
     .values({
@@ -47,11 +48,19 @@ async function seedDemo() {
       awayTeam: "France",
       // Kickoff in 2h → opens_at (kickoff−6h) is past and locks_at
       // (kickoff−30m) is future, so its questions are open to answer now.
-      startsAt: new Date(now + 2 * 60 * 60 * 1000),
+      startsAt: upcomingStartsAt,
       gameState: "scheduled",
       stage: "early_knockout",
     })
-    .onConflictDoNothing();
+    .onConflictDoUpdate({
+      target: fixtures.id,
+      set: { startsAt: upcomingStartsAt, gameState: "scheduled" },
+    });
+
+  // Regenerate from scratch each run: opens_at/locks_at (and the rule hash's
+  // benchmark snapshot) are derived from startsAt, so stale rows from a
+  // previous run must go rather than silently stick around locked/expired.
+  await db.delete(questions).where(eq(questions.fixtureId, upcomingId));
 
   const { attempted, inserted } = await generateQuestionsForFixture(db, upcomingId);
 
