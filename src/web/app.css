@@ -1,3 +1,37 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+/*
+ * Bridges our existing brand palette (unchanged, plain CSS still uses these
+ * exact names) to shadcn/Tailwind's expected --color-* theme tokens. Never
+ * redeclare --accent/--border/etc under a second :root block — that would
+ * silently overwrite the values every existing plain-CSS rule reads.
+ */
+@theme inline {
+  --color-background: var(--bg);
+  --color-foreground: var(--text);
+  --color-card: var(--surface);
+  --color-card-foreground: var(--text);
+  --color-popover: var(--surface);
+  --color-popover-foreground: var(--text);
+  --color-primary: var(--accent);
+  --color-primary-foreground: var(--bg);
+  --color-secondary: var(--surface-2);
+  --color-secondary-foreground: var(--text);
+  --color-muted: var(--surface-2);
+  --color-muted-foreground: var(--text-dim);
+  --color-accent: var(--surface-2);
+  --color-accent-foreground: var(--text);
+  --color-destructive: var(--danger);
+  --color-border: var(--border);
+  --color-input: var(--border);
+  --color-ring: var(--accent);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
 :root {
   color-scheme: dark;
   --bg: #0b1120;
@@ -10,6 +44,7 @@
   --win: #2fbf71;
   --lose: #ff8a5b;
   --border: #2a3757;
+  --radius: 0.625rem;
 }
 
 * {
@@ -175,26 +210,6 @@ button {
   background: var(--danger);
   border-color: var(--danger);
   color: #200606;
-}
-
-.sheet {
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  padding: 1.25rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-}
-
-.sheet-title {
-  font-weight: 700;
-  margin: 0;
-}
-
-.sheet-actions {
-  display: flex;
-  gap: 0.75rem;
 }
 
 .tx-panel {
