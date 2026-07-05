@@ -26,6 +26,18 @@ export function CardDeck({ onNavigateAuth }: Props) {
       .catch(() => setError("Could not load questions right now."));
   }, []);
 
+  // Auto-advance once the checkmark animation has had a beat to register,
+  // instead of requiring a "Next question" tap.
+  useEffect(() => {
+    if (txState !== "locked") return;
+    const timer = setTimeout(() => {
+      setTxState(null);
+      setPendingOutcome(null);
+      setIndex((i) => i + 1);
+    }, 900);
+    return () => clearTimeout(timer);
+  }, [txState]);
+
   const current = questions?.[index] ?? null;
 
   async function save(question: Question, outcome: string) {
@@ -55,12 +67,6 @@ export function CardDeck({ onNavigateAuth }: Props) {
       setPendingOutcome(null);
       void save(current, outcome);
     });
-  }
-
-  function handleNext() {
-    setTxState(null);
-    setPendingOutcome(null);
-    setIndex((i) => i + 1);
   }
 
   if (error) return <p className="empty-state">{error}</p>;
@@ -95,11 +101,6 @@ export function CardDeck({ onNavigateAuth }: Props) {
             state={txState}
             onRetry={() => current && lastAttempt && void save(current, lastAttempt)}
           />
-          {txState === "locked" && (
-            <button type="button" className="btn btn-primary" onClick={handleNext}>
-              Next question
-            </button>
-          )}
         </div>
       )}
     </div>

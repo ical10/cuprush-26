@@ -1,6 +1,11 @@
+import { motion } from "framer-motion";
+import { usePrefersReducedMotion } from "../hooks/use-reduced-motion";
+
 export type TxState = "saving" | "locked" | "failed";
 
 export function TxStatus({ state, onRetry }: { state: TxState; onRetry?(): void }) {
+  const reducedMotion = usePrefersReducedMotion();
+
   if (state === "saving") {
     return (
       <p className="tx-status tx-saving" role="status">
@@ -19,8 +24,31 @@ export function TxStatus({ state, onRetry }: { state: TxState; onRetry?(): void 
     );
   }
   return (
-    <p className="tx-status tx-locked" role="status">
-      Locked on Solana.
-    </p>
+    <motion.div
+      className="tx-locked-badge"
+      role="status"
+      initial={reducedMotion ? undefined : { scale: 0.5, opacity: 0 }}
+      animate={{ scale: 1, opacity: 1 }}
+      transition={{ type: "spring", stiffness: 400, damping: 20 }}
+    >
+      <svg
+        className="tx-locked-check"
+        viewBox="0 0 24 24"
+        width="28"
+        height="28"
+        aria-hidden="true"
+      >
+        <circle cx="12" cy="12" r="11" fill="currentColor" opacity="0.15" />
+        <path
+          d="M7 12.5l3 3 7-7"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+      <span>Locked on Solana.</span>
+    </motion.div>
   );
 }

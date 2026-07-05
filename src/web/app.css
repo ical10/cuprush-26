@@ -210,6 +210,18 @@ button {
   color: var(--danger);
 }
 
+.tx-locked-badge {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--win);
+  font-weight: 600;
+}
+
+.tx-locked-check {
+  flex-shrink: 0;
+}
+
 .disclosure {
   color: var(--text-dim);
   font-size: 0.85rem;
