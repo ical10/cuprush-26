@@ -65,4 +65,13 @@ describe("createPrivyAuthAdapter", () => {
     const adapter = createPrivyAuthAdapter(env);
     await expect(adapter.verifyAccessToken("bad-token")).resolves.toBeNull();
   });
+
+  it("fails closed on an expired token", async () => {
+    verifyAuthToken.mockRejectedValue(new Error("token is expired"));
+
+    const adapter = createPrivyAuthAdapter(env);
+    await expect(
+      adapter.verifyAccessToken("expired.token.here"),
+    ).resolves.toBeNull();
+  });
 });

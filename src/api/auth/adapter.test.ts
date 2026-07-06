@@ -15,9 +15,24 @@ afterEach(() => {
 });
 
 describe("createAuthAdapterFromEnv", () => {
-  it("defaults to the dev adapter when AUTH_MODE is unset", async () => {
+  it("defaults to the privy adapter when AUTH_MODE is unset", async () => {
+    verifyAuthToken.mockResolvedValue({ userId: "did:privy:default" });
+    const adapter = createAuthAdapterFromEnv({
+      PRIVY_APP_ID: "app-id",
+      PRIVY_APP_SECRET: "app-secret",
+    });
+    await expect(adapter.verifyAccessToken("a.b.c")).resolves.toEqual({
+      privyUserId: "did:privy:default",
+    });
+  });
+
+  it("fails closed: defaulting to privy without credentials throws", () => {
+    expect(() => createAuthAdapterFromEnv({})).toThrow();
+  });
+
+  it("selects the dev adapter only when AUTH_MODE=dev is explicit", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const adapter = createAuthAdapterFromEnv({});
+    const adapter = createAuthAdapterFromEnv({ AUTH_MODE: "dev" });
     expect(warn).toHaveBeenCalled();
     await expect(adapter.verifyAccessToken("dev:someone")).resolves.toEqual({
       privyUserId: "someone",

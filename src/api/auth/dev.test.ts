@@ -20,6 +20,21 @@ describe("createDevAuthAdapter", () => {
     );
   });
 
+  it.each(["Production", "PRODUCTION", " prod ", "staging"])(
+    "refuses to start for prod-ish NODE_ENV %j",
+    (nodeEnv) => {
+      vi.spyOn(console, "warn").mockImplementation(() => {});
+      expect(() => createDevAuthAdapter({ NODE_ENV: nodeEnv })).toThrow(
+        /production/i,
+      );
+    },
+  );
+
+  it("still starts when NODE_ENV is unset (local dev)", () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    expect(() => createDevAuthAdapter({})).not.toThrow();
+  });
+
   describe("verifyAccessToken", () => {
     function adapter() {
       vi.spyOn(console, "warn").mockImplementation(() => {});
