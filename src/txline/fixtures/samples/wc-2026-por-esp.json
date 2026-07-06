@@ -1,0 +1,137 @@
+{
+  "snapshot": {
+    "Ts": 1783040400000,
+    "StartTime": 1783364400000,
+    "Competition": "World Cup",
+    "CompetitionId": 72,
+    "FixtureGroupId": 10115574,
+    "Participant1Id": 2802,
+    "Participant1": "Portugal",
+    "Participant2Id": 3021,
+    "Participant2": "Spain",
+    "FixtureId": 18198205,
+    "Participant1IsHome": true
+  },
+  "events": [
+    {
+      "FixtureId": 18198205,
+      "Seq": 112,
+      "Ts": 1783365480000,
+      "Action": "yellow_card",
+      "Confirmed": true,
+      "Participant": 2,
+      "Participant1IsHome": true,
+      "Score": {
+        "Participant1": {
+          "H1": {},
+          "Total": {}
+        },
+        "Participant2": {
+          "H1": { "YellowCards": 1 },
+          "Total": { "YellowCards": 1 }
+        }
+      }
+    },
+    {
+      "FixtureId": 18198205,
+      "Seq": 245,
+      "Ts": 1783366620000,
+      "Action": "corner",
+      "Confirmed": true,
+      "Participant": 1,
+      "Participant1IsHome": true,
+      "Score": {
+        "Participant1": {
+          "H1": { "Corners": 1 },
+          "Total": { "Corners": 1 }
+        },
+        "Participant2": {
+          "H1": { "YellowCards": 1 },
+          "Total": { "YellowCards": 1 }
+        }
+      }
+    },
+    {
+      "FixtureId": 18198205,
+      "Seq": 371,
+      "Ts": 1783367340000,
+      "Action": "goal",
+      "Confirmed": true,
+      "Participant": 1,
+      "Participant1IsHome": true,
+      "Score": {
+        "Participant1": {
+          "H1": { "Goals": 1, "Corners": 1 },
+          "Total": { "Goals": 1, "Corners": 1 }
+        },
+        "Participant2": {
+          "H1": { "YellowCards": 1 },
+          "Total": { "YellowCards": 1 }
+        }
+      }
+    },
+    {
+      "FixtureId": 18198205,
+      "Seq": 486,
+      "Ts": 1783368300000,
+      "Action": "halftime_finalised",
+      "Participant1IsHome": true,
+      "Score": {
+        "Participant1": {
+          "H1": { "Goals": 1, "Corners": 1 },
+          "HT": { "Goals": 1, "Corners": 1 },
+          "Total": { "Goals": 1, "Corners": 1 }
+        },
+        "Participant2": {
+          "H1": { "YellowCards": 1 },
+          "HT": { "YellowCards": 1 },
+          "Total": { "YellowCards": 1 }
+        }
+      }
+    },
+    {
+      "FixtureId": 18198205,
+      "Seq": 702,
+      "Ts": 1783370580000,
+      "Action": "goal",
+      "Confirmed": true,
+      "Participant": 2,
+      "Participant1IsHome": true,
+      "Score": {
+        "Participant1": {
+          "H1": { "Goals": 1, "Corners": 1 },
+          "HT": { "Goals": 1, "Corners": 1 },
+          "H2": { "Corners": 2 },
+          "Total": { "Goals": 1, "Corners": 3 }
+        },
+        "Participant2": {
+          "H1": { "YellowCards": 1 },
+          "HT": { "YellowCards": 1 },
+          "H2": { "Goals": 1 },
+          "Total": { "Goals": 1, "YellowCards": 1 }
+        }
+      }
+    },
+    {
+      "FixtureId": 18198205,
+      "Seq": 918,
+      "Ts": 1783372440000,
+      "Action": "game_finalised",
+      "Participant1IsHome": true,
+      "Score": {
+        "Participant1": {
+          "H1": { "Goals": 1, "Corners": 1 },
+          "HT": { "Goals": 1, "Corners": 1 },
+          "H2": { "Corners": 3 },
+          "Total": { "Goals": 1, "Corners": 4 }
+        },
+        "Participant2": {
+          "H1": { "YellowCards": 1 },
+          "HT": { "YellowCards": 1 },
+          "H2": { "Goals": 1, "YellowCards": 1 },
+          "Total": { "Goals": 1, "YellowCards": 2 }
+        }
+      }
+    }
+  ]
+}

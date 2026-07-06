@@ -36,14 +36,16 @@ exists (after `pnpm build`), the Hono server also serves the built client.
 ### TxLINE endpoints
 
 Replay mode (default) streams the captured JSON files in
-`src/txline/fixtures/samples`. Live mode (`TXLINE_MODE=live`) uses the
-level-12 stream endpoints from the research doc
-(`worldcup-hilo-hackathon-research.md`): `GET <TXLINE_BASE_URL>/snapshot`
-for the fixture list on (re)connect, then `GET <TXLINE_BASE_URL>/stream`
-as a newline-delimited JSON event stream, authenticated with
-`TXLINE_API_KEY`. The exact wire shape is isolated in
-`src/txline/live-client.ts`; everything downstream sees validated
-`TxLineEvent` objects only.
+`src/txline/fixtures/samples`. Live mode (`TXLINE_MODE=live`) talks to the
+real TxLINE API at `TXLINE_BASE_URL` (the origin, no `/api` suffix): it
+mints a guest JWT via `POST /auth/guest/start`, then — sending
+`Authorization: Bearer <jwt>` plus `X-Api-Token: <TXLINE_API_KEY>` on every
+data call — fetches `GET /api/fixtures/snapshot` for the fixture list,
+`GET /api/scores/snapshot/{fixtureId}` for each fixture's event history,
+and follows `GET /api/scores/stream` (SSE) for live events. A 401 re-mints
+the JWT once and retries. The exact wire shape is isolated in
+`src/txline/schema.ts` + `src/txline/live-client.ts`; everything downstream
+sees validated `TxLineEvent` objects only.
 
 ## Setup
 
@@ -77,7 +79,7 @@ See `.env.example` for inline docs. Only the first three are required locally.
 | `PORT` | `3000` | Hono server port |
 | `AUTH_MODE` | `dev` | `dev` stub tokens or `privy` verification |
 | `TXLINE_MODE` | `replay` | `replay` captured fixtures or `live` stream |
-| `TXLINE_BASE_URL` / `TXLINE_API_KEY` | — | Live TxLINE endpoints + auth (live mode only) |
+| `TXLINE_BASE_URL` / `TXLINE_API_KEY` | — | TxLINE origin (no `/api` suffix) + X-Api-Token key (live mode only; guest JWT self-minted) |
 | `TXLINE_REPLAY_INTERVAL_MS` | `1500` | ms between replayed events (0 = all at once) |
 | `TXLINE_FIXTURES_DIR` | `src/txline/fixtures/samples` | Alternate replay fixtures directory |
 | `PRIVY_APP_ID` / `PRIVY_APP_SECRET` | — | Privy credentials (`AUTH_MODE=privy` only) |
@@ -128,18 +130,22 @@ createdb worldcup_hilo 2>/dev/null; pnpm db:migrate
 #    finishes over the following minutes.
 mkdir -p /tmp/smoke-fixtures
 node -e '
-const kickoff = new Date(Date.now() + 32.5 * 60_000);
-const t = (m) => new Date(Date.now() + m * 60_000).toISOString();
-const side = (g, c) => ({ goals: g, yellow_cards: 0, red_cards: 0, corners: c });
-const stats = (hg, hc, ag, ac) => ({ full_time: { home: side(hg, hc), away: side(ag, ac) } });
-const id = "smoke-" + Date.now();
+const kickoff = Date.now() + 32.5 * 60_000;
+const t = (m) => Date.now() + m * 60_000;
+const score = (hg, hc, ag, ac) => ({
+  Participant1: { Total: { Goals: hg, Corners: hc } },
+  Participant2: { Total: { Goals: ag, Corners: ac } },
+});
+const id = Date.now();
+const event = (Seq, Action, m, ...s) =>
+  ({ FixtureId: id, Seq, Ts: t(m), Action, Participant1IsHome: true, Score: score(...s) });
 require("fs").writeFileSync("/tmp/smoke-fixtures/smoke.json", JSON.stringify({
-  snapshot: { fixture_id: id, home_team: "Smoke FC", away_team: "Test United",
-    starts_at: kickoff.toISOString(), game_state: "scheduled", seq: 0, stats: stats(0,0,0,0) },
+  snapshot: { FixtureId: id, StartTime: kickoff, Participant1: "Smoke FC",
+    Participant2: "Test United", Participant1IsHome: true },
   events: [
-    { fixture_id: id, seq: 1, type: "goal", game_state: "live", occurred_at: t(2), stats: stats(1,1,0,0) },
-    { fixture_id: id, seq: 2, type: "corner", game_state: "live", occurred_at: t(4), stats: stats(1,2,0,1) },
-    { fixture_id: id, seq: 3, type: "state_change", game_state: "finished", occurred_at: t(6), stats: stats(1,3,0,2) },
+    event(1, "goal", 2, 1, 1, 0, 0),
+    event(2, "corner", 4, 1, 2, 0, 1),
+    event(3, "game_finalised", 6, 1, 3, 0, 2),
   ],
 }, null, 2));'
 
