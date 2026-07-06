@@ -1,19 +1,31 @@
+import { z } from "zod";
 import type { Database } from "../db/client";
 import { fixtures } from "../db/schema";
 import { applyTxLineEvent, toFixtureUpdate } from "./apply";
 import { publishFixtureUpdate } from "./bus";
-import { txLineEventSchema, txLineFixtureListSchema } from "./schema";
+import {
+  parseScoreSnapshot,
+  txLineFixtureListSchema,
+  txLineWireEventSchema,
+  wireEventToTxLineEvent,
+  type TxLineEvent,
+} from "./schema";
 import type { TxLineClient } from "./client";
 
 /**
- * Live mode: connects to the real TxLINE snapshot + stream endpoints.
+ * Live mode: connects to the real TxLINE API.
  *
- * No TxLINE credentials exist yet, so the HTTP specifics here are a best
- * guess at the documented shape (fetch a snapshot on (re)connect, then
- * consume a newline-delimited JSON stream) and are deliberately isolated in
- * this one file — adjust readLiveConfig/fetchSnapshot/streamEvents once a
- * real endpoint is available. Nothing else in the codebase depends on this
- * shape; everything downstream only sees validated TxLineEvent objects.
+ * Wire contract (verified against devnet; see fixtures/captured/):
+ * - `POST {origin}/auth/guest/start` mints a guest JWT (no auth, no body).
+ * - Every data call carries `Authorization: Bearer <jwt>` and
+ *   `X-Api-Token: <apiKey>`. A 401 re-mints the JWT once and retries once.
+ * - Boot: `GET /api/fixtures/snapshot` upserts fixtures, then
+ *   `GET /api/scores/snapshot/{fixtureId}` replays each fixture's
+ *   Score-bearing events (sorted by Seq), then `GET /api/scores/stream`
+ *   (SSE) feeds the same validate→apply→publish pipeline.
+ *
+ * The HTTP specifics stay isolated in this one file; everything downstream
+ * only sees validated TxLineEvent objects.
  */
 
 export type TxLineLiveConfig = {
@@ -22,53 +34,169 @@ export type TxLineLiveConfig = {
 };
 
 export function readLiveConfig(env: NodeJS.ProcessEnv): TxLineLiveConfig {
-  const baseUrl = env.TXLINE_BASE_URL;
+  const rawBaseUrl = env.TXLINE_BASE_URL;
   const apiKey = env.TXLINE_API_KEY;
-  if (!baseUrl || !apiKey) {
+  if (!rawBaseUrl || !apiKey) {
     throw new Error(
       "TXLINE_BASE_URL and TXLINE_API_KEY are required when TXLINE_MODE=live",
     );
   }
+
+  let baseUrl = rawBaseUrl.replace(/\/+$/, "");
+  if (baseUrl.endsWith("/api")) {
+    baseUrl = baseUrl.slice(0, -"/api".length);
+    console.warn(
+      "TXLINE_BASE_URL should be the TxLINE origin without /api — ignoring the trailing /api segment",
+    );
+  }
+
   return { baseUrl, apiKey };
 }
 
-async function fetchSnapshot(config: TxLineLiveConfig, signal: AbortSignal): Promise<unknown> {
-  const res = await fetch(new URL("/snapshot", config.baseUrl), {
-    headers: { Authorization: `Bearer ${config.apiKey}` },
-    signal,
-  });
-  if (!res.ok) {
-    throw new Error(`TxLINE snapshot request failed: ${res.status} ${res.statusText}`);
+export type FetchLike = typeof fetch;
+
+export type AuthorizedFetchInit = {
+  signal?: AbortSignal;
+  accept?: string;
+};
+
+const guestTokenSchema = z.object({ token: z.string().min(1) });
+
+/**
+ * Wraps fetch with TxLINE auth: lazily mints a guest JWT, sends both auth
+ * headers on every call, and on a 401 re-mints once and retries once. A 401
+ * on the retry throws.
+ */
+export function createAuthorizedFetch(
+  config: TxLineLiveConfig,
+  fetchImpl: FetchLike = fetch,
+): (path: string, init?: AuthorizedFetchInit) => Promise<Response> {
+  let jwt: string | null = null;
+
+  async function mintJwt(signal?: AbortSignal): Promise<string> {
+    const res = await fetchImpl(new URL("/auth/guest/start", config.baseUrl), {
+      method: "POST",
+      signal,
+    });
+    if (!res.ok) {
+      throw new Error(`TxLINE guest JWT mint failed: ${res.status} ${res.statusText}`);
+    }
+    return guestTokenSchema.parse(await res.json()).token;
   }
-  return res.json();
+
+  return async function authorizedFetch(path, init = {}) {
+    jwt ??= await mintJwt(init.signal);
+
+    const request = () =>
+      fetchImpl(new URL(path, config.baseUrl), {
+        headers: {
+          Authorization: `Bearer ${jwt}`,
+          "X-Api-Token": config.apiKey,
+          ...(init.accept ? { Accept: init.accept } : {}),
+        },
+        signal: init.signal,
+      });
+
+    let res = await request();
+    if (res.status === 401) {
+      jwt = await mintJwt(init.signal);
+      res = await request();
+      if (res.status === 401) {
+        throw new Error(`TxLINE request still unauthorized after re-minting the guest JWT (${path})`);
+      }
+    }
+    return res;
+  };
 }
 
-/** Newline-delimited JSON stream of raw (unvalidated) TxLINE events. */
-async function* streamEvents(
-  config: TxLineLiveConfig,
-  signal: AbortSignal,
-): AsyncGenerator<unknown> {
-  const res = await fetch(new URL("/stream", config.baseUrl), {
-    headers: { Authorization: `Bearer ${config.apiKey}` },
-    signal,
-  });
-  if (!res.ok || !res.body) {
-    throw new Error(`TxLINE stream request failed: ${res.status} ${res.statusText}`);
+export type SseFrame = {
+  data: string;
+  event?: string;
+  id?: string;
+};
+
+/**
+ * Minimal text/event-stream parser: accumulates `data:` lines (joined with
+ * newlines), captures `event:`/`id:`, skips `:` comment lines, and emits a
+ * frame on each blank line. An incomplete trailing frame is discarded, per
+ * the SSE spec.
+ */
+export async function* parseSseStream(
+  chunks: AsyncIterable<string>,
+): AsyncGenerator<SseFrame> {
+  let dataLines: string[] = [];
+  let eventName: string | undefined;
+  let id: string | undefined;
+
+  function flush(): SseFrame | null {
+    const frame: SseFrame | null =
+      dataLines.length === 0
+        ? null
+        : {
+            data: dataLines.join("\n"),
+            ...(eventName !== undefined ? { event: eventName } : {}),
+            ...(id !== undefined ? { id } : {}),
+          };
+    dataLines = [];
+    eventName = undefined;
+    id = undefined;
+    return frame;
   }
 
-  const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
+  function handleLine(rawLine: string): SseFrame | null {
+    const line = rawLine.endsWith("\r") ? rawLine.slice(0, -1) : rawLine;
+    if (line === "") return flush();
+    if (line.startsWith(":")) return null;
+
+    const colon = line.indexOf(":");
+    const field = colon === -1 ? line : line.slice(0, colon);
+    let value = colon === -1 ? "" : line.slice(colon + 1);
+    if (value.startsWith(" ")) value = value.slice(1);
+
+    if (field === "data") dataLines.push(value);
+    else if (field === "event") eventName = value;
+    else if (field === "id") id = value;
+    return null;
+  }
+
   let buffer = "";
+  for await (const chunk of chunks) {
+    buffer += chunk;
+    let newlineIndex: number;
+    while ((newlineIndex = buffer.indexOf("\n")) >= 0) {
+      const line = buffer.slice(0, newlineIndex);
+      buffer = buffer.slice(newlineIndex + 1);
+      const frame = handleLine(line);
+      if (frame) yield frame;
+    }
+  }
+}
+
+/**
+ * Turns SSE text chunks into raw (unvalidated) TxLINE event payloads:
+ * heartbeat frames are skipped entirely (their `Ts` is in seconds and must
+ * never reach the event schema), non-JSON data is logged and dropped.
+ */
+export async function* sseEventsFromChunks(
+  chunks: AsyncIterable<string>,
+): AsyncGenerator<unknown> {
+  for await (const frame of parseSseStream(chunks)) {
+    if (frame.event === "heartbeat") continue;
+    try {
+      yield JSON.parse(frame.data);
+    } catch {
+      console.error("Discarding non-JSON TxLINE stream frame");
+    }
+  }
+}
+
+async function* decodeChunks(body: NonNullable<Response["body"]>): AsyncGenerator<string> {
+  const reader = body.pipeThrough(new TextDecoderStream()).getReader();
   try {
     while (true) {
       const { value, done } = await reader.read();
       if (done) return;
-      buffer += value;
-      let newlineIndex: number;
-      while ((newlineIndex = buffer.indexOf("\n")) >= 0) {
-        const line = buffer.slice(0, newlineIndex).trim();
-        buffer = buffer.slice(newlineIndex + 1);
-        if (line) yield JSON.parse(line);
-      }
+      yield value;
     }
   } finally {
     await reader.cancel().catch(() => {});
@@ -78,16 +206,37 @@ async function* streamEvents(
 export type LiveClientOptions = {
   db: Database;
   env: NodeJS.ProcessEnv;
+  /** Test seam; defaults to global fetch. */
+  fetchImpl?: FetchLike;
 };
 
 export function createLiveTxLineClient(options: LiveClientOptions): TxLineClient {
   const config = readLiveConfig(options.env);
+  const authorizedFetch = createAuthorizedFetch(config, options.fetchImpl ?? fetch);
   let controller: AbortController | null = null;
   let loop: Promise<void> | null = null;
 
-  async function seedSnapshot(signal: AbortSignal): Promise<void> {
-    const raw = await fetchSnapshot(config, signal);
+  async function fetchJson(path: string, signal: AbortSignal): Promise<unknown> {
+    const res = await authorizedFetch(path, { signal });
+    if (!res.ok) {
+      throw new Error(`TxLINE request failed: ${res.status} ${res.statusText} (${path})`);
+    }
+    return res.json();
+  }
+
+  async function applyEvent(event: TxLineEvent): Promise<void> {
+    const outcome = await applyTxLineEvent(options.db, event);
+    if (outcome.applied) {
+      publishFixtureUpdate(toFixtureUpdate(outcome.fixture));
+    }
+  }
+
+  // Reconnect fetches the snapshots before resuming the stream, so a missed
+  // event is always healed by the per-fixture score snapshot.
+  async function seedSnapshots(signal: AbortSignal): Promise<void> {
+    const raw = await fetchJson("/api/fixtures/snapshot", signal);
     const snapshots = txLineFixtureListSchema.parse(raw);
+
     for (const snapshot of snapshots) {
       await options.db
         .insert(fixtures)
@@ -102,23 +251,41 @@ export function createLiveTxLineClient(options: LiveClientOptions): TxLineClient
         })
         .onConflictDoNothing({ target: fixtures.id });
     }
+
+    for (const snapshot of snapshots) {
+      const events = parseScoreSnapshot(
+        await fetchJson(`/api/scores/snapshot/${snapshot.fixtureId}`, signal),
+      );
+      for (const event of events) {
+        await applyEvent(event);
+      }
+    }
+  }
+
+  async function* streamEvents(signal: AbortSignal): AsyncGenerator<unknown> {
+    const res = await authorizedFetch("/api/scores/stream", {
+      signal,
+      accept: "text/event-stream",
+    });
+    if (!res.ok || !res.body) {
+      throw new Error(`TxLINE stream request failed: ${res.status} ${res.statusText}`);
+    }
+    yield* sseEventsFromChunks(decodeChunks(res.body));
   }
 
   async function run(signal: AbortSignal): Promise<void> {
-    // Reconnect fetches a snapshot before resuming the stream.
-    await seedSnapshot(signal);
+    await seedSnapshots(signal);
 
-    for await (const raw of streamEvents(config, signal)) {
+    for await (const raw of streamEvents(signal)) {
       if (signal.aborted) return;
-      const event = txLineEventSchema.safeParse(raw);
-      if (!event.success) {
-        console.error("Discarding invalid TxLINE event", event.error.message);
+      const wire = txLineWireEventSchema.safeParse(raw);
+      if (!wire.success) {
+        console.error("Discarding invalid TxLINE event", wire.error.message);
         continue;
       }
-      const outcome = await applyTxLineEvent(options.db, event.data);
-      if (outcome.applied) {
-        publishFixtureUpdate(toFixtureUpdate(outcome.fixture));
-      }
+      const event = wireEventToTxLineEvent(wire.data);
+      if (!event) continue; // informational action without a Score
+      await applyEvent(event);
     }
   }
 
