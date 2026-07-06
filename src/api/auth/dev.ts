@@ -7,8 +7,15 @@ const DEV_TOKEN_PREFIX = "dev:";
  * suffix as the (fake) Privy user id, so the full authenticated flow runs
  * without Privy credentials. Never usable in production.
  */
+const PROD_NODE_ENVS = new Set(["production", "prod", "staging"]);
+
 export function createDevAuthAdapter(env: AuthEnv = process.env): AuthAdapter {
-  if (env.NODE_ENV === "production") {
+  // Reject every prod-ish NODE_ENV, not just the exact string "production",
+  // so "Production"/"PROD"/"staging" can't slip the stub into a deployed
+  // environment. NODE_ENV unset stays allowed — local `pnpm dev` doesn't set
+  // it, and the real guard against accidental prod exposure is AUTH_MODE
+  // defaulting to privy (this adapter only runs on an explicit AUTH_MODE=dev).
+  if (PROD_NODE_ENVS.has((env.NODE_ENV ?? "").trim().toLowerCase())) {
     throw new Error(
       "Refusing to start: AUTH_MODE=dev accepts unauthenticated stub tokens " +
         "and must never run in production. Set AUTH_MODE=privy with " +

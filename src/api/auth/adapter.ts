@@ -23,14 +23,16 @@ export type AuthEnv = {
 };
 
 /**
- * AUTH_MODE=privy verifies real Privy access tokens; AUTH_MODE=dev (the
- * default) accepts local `dev:<id>` stub tokens and refuses to start in
- * production.
+ * AUTH_MODE=privy (the default) verifies real Privy access tokens;
+ * AUTH_MODE=dev must be set explicitly and accepts local `dev:<id>` stub
+ * tokens. Defaulting to privy makes a deploy that forgets AUTH_MODE fail
+ * closed — the privy adapter throws without credentials — instead of
+ * silently booting the unauthenticated stub.
  */
 export function createAuthAdapterFromEnv(
   env: AuthEnv = process.env,
 ): AuthAdapter {
-  const mode = env.AUTH_MODE ?? "dev";
+  const mode = env.AUTH_MODE ?? "privy";
   switch (mode) {
     case "privy":
       return createPrivyAuthAdapter(env);

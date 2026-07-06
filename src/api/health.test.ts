@@ -1,9 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createApp } from "./app";
+import { createDevAuthAdapter } from "./auth/dev";
 
 describe("GET /api/health", () => {
   it("responds with ok status", async () => {
-    const app = createApp();
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const app = createApp({ auth: createDevAuthAdapter({}) });
 
     const res = await app.request("/api/health");
 
