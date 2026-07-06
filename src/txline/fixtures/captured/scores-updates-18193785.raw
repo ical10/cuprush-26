@@ -1,0 +1,8 @@
+data: {"FixtureId":18193785,"GameState":"scheduled","StartTime":1783382400000,"IsTeam":true,"FixtureGroupId":10115574,"CompetitionId":72,"CountryId":466,"SportId":1,"Participant1IsHome":true,"Participant2Id":1575,"Participant1Id":3220,"Action":"coverage_update","Id":0,"Ts":1782958462902,"ConnectionId":838,"Seq":0,"Data":{},"Stats":{}}
+event: scores
+id: 0
+
+data: {"FixtureId":18193785,"GameState":"scheduled","StartTime":1783382400000,"IsTeam":true,"FixtureGroupId":10115574,"CompetitionId":72,"CountryId":466,"SportId":1,"Participant1IsHome":true,"Participant2Id":1575,"Participant1Id":3220,"Action":"comment","Id":1,"Ts":1782958462911,"ConnectionId":838,"Seq":1,"Data":{},"Stats":{}}
+event: scores
+id: 1
+
