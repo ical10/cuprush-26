@@ -11,3 +11,4 @@ program/.anchor/
 SPEC.md
 tasks/
 .mcp.json
+.txline-devnet-key.json
