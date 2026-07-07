@@ -1,4 +1,10 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
-  <rect width="64" height="64" rx="12" fill="#0b1120"/>
-  <text x="32" y="42" font-size="28" font-family="sans-serif" fill="#ffffff" text-anchor="middle">HL</text>
+  <path d="M12 0 H46 L64 18 V52 A12 12 0 0 1 52 64 H12 A12 12 0 0 1 0 52 V12 A12 12 0 0 1 12 0 Z" fill="#07120D"/>
+  <path d="M12 1 H45.6 L63 18.4 V52 A11 11 0 0 1 52 63 H12 A11 11 0 0 1 1 52 V12 A11 11 0 0 1 12 1 Z" fill="none" stroke="#315343" stroke-width="2"/>
+  <g stroke="#D7FF3F" fill="none" stroke-linecap="butt" stroke-linejoin="miter" stroke-width="4">
+    <path d="M7 43 L12 21"/>
+    <path d="M19.5 43 L24.5 21"/>
+    <path d="M31.5 21 H40.5 V32 H31.5 V43 H40.5"/>
+    <path d="M57 21 H48 V43 H57 V32 H48"/>
+  </g>
 </svg>
