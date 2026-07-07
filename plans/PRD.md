@@ -1,4 +1,4 @@
-# World Cup Hi-Lo — PRD (App-side PoC)
+# CupRush 26 — PRD (App-side PoC)
 
 **Track:** Consumer and Fan Experiences (TxODDS) · **Deadline:** July 19, 2026 23:59 UTC
 **Scope:** App-side implementation only. The Hermes AI player cohort and its MCP endpoint are explicitly out of scope.
@@ -66,7 +66,7 @@ A mobile-first fan game where fans predict the match winner and quick stat outco
 - Privy passwordless email OTP. Backend verifies the Privy access token on every authenticated request and maps the Privy user ID to a `participant` (owner of wallet, profile, predictions, counters). Never trust a participant ID from a request body. No OTPs, passwords, raw tokens, or emails stored.
 - Routes: `GET /api/me`, `PATCH /api/me` (schema-validated `displayName` only), `GET /api/leaderboard`, `POST /api/logout`, `POST /api/wallet/delegation/revoke`, `DELETE /api/me` (revoke delegation + anonymize off-chain profile; on-chain data survives — disclose before confirming).
 - Privy embedded Solana wallet, created/unlocked behind the account. One explicit delegation approval; backend then submits only allowlisted game instructions. Wallet address visible; delegation revocable. Disclosure once: the app creates a wallet and may submit approved game transactions.
-- Sponsored fees (Privy sponsorship preferred; custom fee payer only as fallback). Guardrails: allowlist Hi-Lo program ID + instruction shapes; reject transfers and unexpected account creation; per-wallet/question/session/IP limits; compute and spend caps; full audit logging. Never sign an opaque transaction. No prefunding user wallets.
+- Sponsored fees (Privy sponsorship preferred; custom fee payer only as fallback). Guardrails: allowlist CupRush 26 program ID + instruction shapes; reject transfers and unexpected account creation; per-wallet/question/session/IP limits; compute and spend caps; full audit logging. Never sign an opaque transaction. No prefunding user wallets.
 
 ### On-chain program (Anchor)
 

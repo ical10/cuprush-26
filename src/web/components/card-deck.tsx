@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { MoveLeft, MoveRight } from "lucide-react";
 import { fetchQuestions, submitPredictionBatch } from "../lib/api";
 import { useAuth } from "../auth/auth-context";
 import { Button } from "@/components/ui/button";
@@ -6,6 +7,8 @@ import type { BatchAnswer, Question } from "../lib/types";
 import { QuestionCard } from "./question-card";
 import { SavePrompt } from "./save-prompt";
 import { TxStatus } from "./tx-status";
+import { capitalizeOutcome } from "../lib/outcome-labels";
+import stadiumBg from "../assets/stadium-bg.jpg";
 
 type Props = {
   onNavigateAuth(after: () => void): void;
@@ -13,7 +16,37 @@ type Props = {
 
 type SubmitState = "idle" | "submitting" | "done" | "failed";
 
-export function CardDeck({ onNavigateAuth }: Props) {
+/* Night-stadium photo behind the deck only (brand toolkit phone mock). A
+   fixed layer under the shell content; the CSS scrim keeps header, nav, and
+   deck text on near-solid --bg. Fades in on load so there is no pop. */
+function StadiumBackdrop() {
+  const [loaded, setLoaded] = useState(false);
+  const imgRef = useRef<HTMLImageElement | null>(null);
+
+  useEffect(() => {
+    if (imgRef.current?.complete) setLoaded(true);
+  }, []);
+
+  return (
+    <div
+      className={loaded ? "stadium-backdrop stadium-backdrop-loaded" : "stadium-backdrop"}
+      aria-hidden="true"
+    >
+      <img ref={imgRef} src={stadiumBg} alt="" onLoad={() => setLoaded(true)} />
+    </div>
+  );
+}
+
+export function CardDeck(props: Props) {
+  return (
+    <>
+      <StadiumBackdrop />
+      <Deck {...props} />
+    </>
+  );
+}
+
+function Deck({ onNavigateAuth }: Props) {
   const { isAuthenticated } = useAuth();
   const [questions, setQuestions] = useState<Question[] | null>(null);
   const [index, setIndex] = useState(0);
@@ -89,10 +122,12 @@ export function CardDeck({ onNavigateAuth }: Props) {
     if (submitState === "done") {
       return (
         <div className="screen deck-screen">
-          <TxStatus state="locked" />
-          <p className="deck-progress">
-            {answers.length} pick{answers.length === 1 ? "" : "s"} locked in.
-          </p>
+          <div className="deck-locked clip-cut">
+            <TxStatus state="locked" />
+            <p className="deck-progress">
+              {answers.length} pick{answers.length === 1 ? "" : "s"} locked in.
+            </p>
+          </div>
         </div>
       );
     }
@@ -109,18 +144,66 @@ export function CardDeck({ onNavigateAuth }: Props) {
           onClick={() => void submit()}
           disabled={submitState === "submitting" || answers.length === 0}
         >
-          {submitState === "submitting" ? "Submitting…" : "Submit picks"}
+          {submitState === "submitting" ? "Locking picks…" : "Lock my picks"}
         </Button>
       </div>
     );
   }
+
+  const [primary, secondary] = current.outcomes;
+  // Up to two upcoming questions peek out behind the active card as static
+  // silhouettes — the active card alone owns pointer and keyboard input.
+  const upcoming = questions.slice(index + 1, index + 3);
+  const deckDisabled = pendingOutcome !== null;
 
   return (
     <div className="screen deck-screen">
       <p className="deck-progress">
         Card {index + 1} of {total}
       </p>
-      <QuestionCard question={current} onAnswer={handleAnswer} />
+
+      <div className="deck-group">
+        <div className="deck-stage">
+          {upcoming
+            .map((q, depth) => ({ id: q.id, depth: depth + 1 }))
+            .reverse()
+            .map(({ id, depth }) => (
+              <div
+                key={id}
+                className={`deck-ghost deck-ghost-${depth} clip-cut-lg`}
+                aria-hidden="true"
+              />
+            ))}
+          <QuestionCard question={current} onAnswer={handleAnswer} disabled={deckDisabled} />
+        </div>
+
+        {/*
+          Fixed action rail (DESIGN.md § 05 Swipe deck): the button fallback
+          never moves, rotates, or exits with the card. Left = outcomes[1]
+          (No/Lower), right = outcomes[0] (Yes/Higher) — same mapping as
+          outcomeFromDrag's drag directions.
+        */}
+        <div className="action-rail" role="group" aria-label="Answer this question">
+          <button
+            type="button"
+            className="btn btn-outcome"
+            disabled={deckDisabled}
+            onClick={() => handleAnswer(secondary ?? "")}
+          >
+            <MoveLeft size={16} strokeWidth={2} aria-hidden="true" />
+            {capitalizeOutcome(secondary ?? "")}
+          </button>
+          <button
+            type="button"
+            className="btn btn-outcome"
+            disabled={deckDisabled}
+            onClick={() => handleAnswer(primary ?? "")}
+          >
+            {capitalizeOutcome(primary ?? "")}
+            <MoveRight size={16} strokeWidth={2} aria-hidden="true" />
+          </button>
+        </div>
+      </div>
 
       {pendingOutcome && !isAuthenticated && (
         <SavePrompt

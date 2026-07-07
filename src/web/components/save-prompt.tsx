@@ -27,15 +27,19 @@ export function SavePrompt({ outcome, onSignIn, onDismiss }: Props) {
       <DialogContent showCloseButton={false}>
         <DialogHeader>
           <DialogTitle>Save your pick and start a streak.</DialogTitle>
-          <DialogDescription>
-            Your pick: {capitalizeOutcome(outcome)}
+          <DialogDescription className="text-base">
+            Your pick: {capitalizeOutcome(outcome)}. Signing in creates a free
+            account with an embedded wallet so your pick locks on Solana — no
+            crypto knowledge needed.
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>
-          <Button variant="outline" onClick={onDismiss}>
+          <Button variant="secondary" className="min-h-11" onClick={onDismiss}>
             Keep browsing
           </Button>
-          <Button onClick={onSignIn}>Sign in to save</Button>
+          <Button className="min-h-11" onClick={onSignIn}>
+            Sign in to save
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

@@ -1,5 +1,5 @@
+import { act } from "react";
 import { fireEvent, render, screen } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { QuestionCard } from "./question-card";
 import type { Question } from "../lib/types";
@@ -34,41 +34,29 @@ const question: Question = {
 };
 
 describe("QuestionCard", () => {
-  it("renders the question text and both outcome labels as text, never colour alone", () => {
+  it("renders the fixture, the question, and both directional cue labels as text", () => {
     render(<QuestionCard question={question} onAnswer={() => {}} />);
+    expect(screen.getByText("Argentina vs Brazil")).toBeInTheDocument();
     expect(screen.getByText(question.question)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Yes" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "No" })).toBeInTheDocument();
+    // Swipe cues mirror the rail: No on the left, Yes on the right.
+    expect(screen.getByText(/No/)).toBeInTheDocument();
+    expect(screen.getByText(/Yes/)).toBeInTheDocument();
   });
 
-  it("answers via the button fallback without any drag gesture", async () => {
-    const onAnswer = vi.fn();
-    render(<QuestionCard question={question} onAnswer={onAnswer} />);
-    await userEvent.click(screen.getByRole("button", { name: "Yes" }));
-    expect(onAnswer).toHaveBeenCalledWith("Yes");
+  it("contains no outcome buttons — those live in the deck's action rail", () => {
+    render(<QuestionCard question={question} onAnswer={() => {}} />);
+    expect(screen.queryByRole("button")).not.toBeInTheDocument();
   });
-
-  it("answers via keyboard activation (Enter) on the outcome button", async () => {
-    const onAnswer = vi.fn();
-    render(<QuestionCard question={question} onAnswer={onAnswer} />);
-    const button = screen.getByRole("button", { name: "No" });
-    button.focus();
-    await userEvent.keyboard("{Enter}");
-    expect(onAnswer).toHaveBeenCalledWith("No");
-  });
-
-  it("disables the outcome buttons while a save is in flight", () => {
-    render(<QuestionCard question={question} onAnswer={() => {}} disabled />);
-    expect(screen.getByRole("button", { name: "Yes" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "No" })).toBeDisabled();
-  });
-
-  const nextFrame = () => new Promise((resolve) => requestAnimationFrame(resolve));
 
   // framer-motion recognizes a drag (sets its internal `startEvent`) inside
   // its own rAF-batched frame scheduler, not synchronously on pointermove —
   // a frame must actually tick between the move and the pointerup, or the
   // release is treated as a plain click with no drag ever having started.
+  // Wrapped in act() because the frame also flushes drag-driven React state
+  // (the threshold reveal).
+  const nextFrame = () =>
+    act(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
+
   async function drag(card: HTMLElement, dx: number) {
     const opts = { pointerId: 1, isPrimary: true, pointerType: "mouse" as const };
     fireEvent.pointerDown(card, { ...opts, clientX: 0, clientY: 0, buttons: 1 });
@@ -80,11 +68,45 @@ describe("QuestionCard", () => {
     await nextFrame();
   }
 
-  it("commits an outcome from a drag past the threshold, not just the button fallback", async () => {
+  it("commits an outcome from a drag past the threshold", async () => {
     const onAnswer = vi.fn();
     render(<QuestionCard question={question} onAnswer={onAnswer} />);
     await drag(screen.getByTestId("question-card"), 150);
     expect(onAnswer).toHaveBeenCalledWith("Yes");
+    expect(onAnswer).toHaveBeenCalledTimes(1);
+  });
+
+  it("commits the left outcome from a drag past the threshold to the left", async () => {
+    const onAnswer = vi.fn();
+    render(<QuestionCard question={question} onAnswer={onAnswer} />);
+    await drag(screen.getByTestId("question-card"), -150);
+    expect(onAnswer).toHaveBeenCalledWith("No");
+  });
+
+  it("ignores drags while disabled during a save", async () => {
+    const onAnswer = vi.fn();
+    render(<QuestionCard question={question} onAnswer={onAnswer} disabled />);
+    await drag(screen.getByTestId("question-card"), 150);
+    expect(onAnswer).not.toHaveBeenCalled();
+  });
+
+  it("reveals the would-be outcome only after the drag crosses the threshold", async () => {
+    render(<QuestionCard question={question} onAnswer={() => {}} />);
+    const card = screen.getByTestId("question-card");
+    const opts = { pointerId: 1, isPrimary: true, pointerType: "mouse" as const };
+
+    fireEvent.pointerDown(card, { ...opts, clientX: 0, clientY: 0, buttons: 1 });
+    fireEvent.pointerMove(window, { ...opts, clientX: 40, clientY: 0, buttons: 1 });
+    await nextFrame();
+    // Below the commit threshold: no label, no semantic colour.
+    expect(screen.queryByTestId("card-reveal")).not.toBeInTheDocument();
+
+    fireEvent.pointerMove(window, { ...opts, clientX: 150, clientY: 0, buttons: 1 });
+    await nextFrame();
+    expect(screen.getByTestId("card-reveal")).toHaveTextContent("Yes");
+
+    fireEvent.pointerUp(window, { ...opts, clientX: 150, clientY: 0, buttons: 0 });
+    await nextFrame();
   });
 
   it("does not commit a small, slow drag under the threshold", async () => {

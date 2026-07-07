@@ -48,11 +48,11 @@ export function PrivyAuthStub({ onDone }: { onDone(): void }) {
         Privy app credentials.
       </p>
       <p className="disclosure">
-        Locked on Solana. Signing in creates an embedded wallet and may
-        submit approved game transactions on your behalf.
+        Signing in creates an embedded wallet and may submit approved game
+        transactions to Solana on your behalf.
       </p>
       <button type="button" className="btn btn-primary" onClick={handleClick}>
-        Continue (stub)
+        Sign in (stub)
       </button>
     </div>
   );

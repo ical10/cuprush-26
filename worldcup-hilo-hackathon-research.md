@@ -1,4 +1,4 @@
-# World Cup Hi-Lo
+# CupRush 26
 ## PoC product and architecture brief
 
 **Track:** [Consumer and Fan Experiences](https://superteam.fun/earn/listing/consumer-and-fan-experiences) by TxODDS  
@@ -14,7 +14,7 @@
 
 ## Product decision
 
-World Cup Hi-Lo is a mobile-first game where fans predict the match winner, then answer quick stat questions about goals, cards, and corners.
+CupRush 26 is a mobile-first game where fans predict the match winner, then answer quick stat questions about goals, cards, and corners.
 
 The app turns one simple prediction into a live second-screen experience. During the match, the card updates from TxLINE and shows how close the player is to winning.
 
@@ -313,7 +313,7 @@ flowchart LR
     UI --> W["Privy embedded user wallet"]
     W --> S
     FP["Privy sponsorship or custom fee payer"] --> S
-    S --> P["Hi-Lo Anchor program"]
+    S --> P["CupRush 26 Anchor program"]
 ```
 
 The backend owns the TxLINE credentials and maintains one authenticated stream. Browsers never receive the TxLINE token.
@@ -544,7 +544,7 @@ On Solana this is a sponsored fee payer, not an Ethereum-style paymaster. The us
 3. The user approves limited delegation for game actions.
 4. The backend builds the transaction from a known game template.
 5. The sponsor path decodes and validates the complete message.
-6. It accepts only the Hi-Lo program and expected instruction shape.
+6. It accepts only the CupRush 26 program and expected instruction shape.
 7. Privy sponsorship adds the fee payer and broadcasts the transaction.
 8. The client receives the signature and confirmation state.
 
@@ -554,7 +554,7 @@ Prefer Privy's native Solana sponsorship with app gas credits. Use a custom back
 
 #### Sponsorship guardrails
 
-- Allowlist the Hi-Lo program ID and supported instructions.
+- Allowlist the CupRush 26 program ID and supported instructions.
 - Reject SOL transfers, token transfers, and unexpected account creation.
 - Limit submissions per wallet, question, session, and IP.
 - Cap compute units and sponsored spend per transaction.
@@ -572,7 +572,7 @@ Do not send 0.1 SOL to every embedded wallet. It creates a drainable faucet and 
 
 Do not fall back to prefunding user wallets on mainnet. If sponsorship is unavailable, show a maintenance state and restore service after the sponsor is funded.
 
-Use devnet only for isolated contract tests. The live demo uses mainnet end to end so TxLINE level 12, TxOracle roots, and the Hi-Lo program share one cluster.
+Use devnet only for isolated contract tests. The live demo uses mainnet end to end so TxLINE level 12, TxOracle roots, and the CupRush 26 program share one cluster.
 
 USDC cannot pay native Solana fees through Privy's current user-pays mode; that mode is EVM-only. A USDC credit or conversion system is post-hackathon scope.
 

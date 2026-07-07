@@ -76,8 +76,9 @@ export function isCurrentlyWinning(
   return outcome === "yes" || outcome === "higher" ? satisfied : !satisfied;
 }
 
+/** DESIGN.md § 05 "Live card": the word sits beside the arrow, never color alone. */
 export function winningLabel(winning: boolean): string {
-  return winning ? "Currently winning" : "Currently losing";
+  return winning ? "Ahead" : "Behind";
 }
 
 /** Display-only: "yes" -> "Yes". The raw lowercase value is what gets submitted. */

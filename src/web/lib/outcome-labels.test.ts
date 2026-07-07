@@ -62,7 +62,7 @@ describe("isCurrentlyWinning", () => {
 
 describe("winningLabel", () => {
   it("uses text, never colour, to convey state", () => {
-    expect(winningLabel(true)).toBe("Currently winning");
-    expect(winningLabel(false)).toBe("Currently losing");
+    expect(winningLabel(true)).toBe("Ahead");
+    expect(winningLabel(false)).toBe("Behind");
   });
 });

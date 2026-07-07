@@ -1,6 +1,6 @@
 # Hermes AI Player Cohort — Implementation Plan
 
-**Status:** Ready to implement after the Hi-Lo PoC.
+**Status:** Ready to implement after the CupRush 26 PoC.
 
 ## Delivery ownership
 

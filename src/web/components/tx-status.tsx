@@ -22,7 +22,7 @@ export function TxStatus({ state, message, onRetry }: Props) {
   if (state === "failed") {
     return (
       <p className="tx-status tx-failed" role="alert">
-        {message || "Save failed."}{" "}
+        {message || "That save didn't go through. Your pick is still here."}{" "}
         <button type="button" className="btn btn-link" onClick={onRetry}>
           Retry
         </button>

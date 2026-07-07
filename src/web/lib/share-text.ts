@@ -4,8 +4,9 @@ export type ShareInput = {
   question: string;
 };
 
+/** PRODUCT.md share line + brand name; celebrates the call, never shames a miss. */
 export function buildShareText(input: ShareInput): string {
   const outcome =
-    input.won === null ? "Result pending" : input.won ? "Nailed it" : "Missed it";
-  return `${outcome}: "${input.question}" — streak: ${input.streak}. Play World Cup Hi-Lo.`;
+    input.won === null ? "Result pending" : input.won ? "Called it" : "Not this time";
+  return `${outcome}: "${input.question}" — streak: ${input.streak}. I made the call. Can you beat it? Play CupRush 26.`;
 }
