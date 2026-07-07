@@ -48,7 +48,12 @@ function AppShell() {
   return (
     <div className="app-shell">
       <header className="app-header">
-        <h1>World Cup Hi-Lo</h1>
+        <h1 className="brand-lockup" aria-label="CupRush 26">
+          <span aria-hidden="true">CUPRUSH</span>
+          <span className="brand-lockup-tab" aria-hidden="true">
+            {"// 26"}
+          </span>
+        </h1>
       </header>
 
       <main className="app-main">

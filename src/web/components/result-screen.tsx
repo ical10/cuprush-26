@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react";
 import { fetchMe, fetchMyPredictions } from "../lib/api";
 import { buildShareText } from "../lib/share-text";
+import { Flag } from "lucide-react";
+import { StatusBadge } from "./status-badge";
+import { EmptyState } from "./empty-state";
 import type { Me, Prediction, Question } from "../lib/types";
 
 type MyPrediction = Prediction & { question: Question; correct: boolean | null };
@@ -35,15 +38,28 @@ export function ResultScreen() {
 
   if (!predictions) return <p className="empty-state">Loading results…</p>;
   if (!latest) {
-    return <p className="empty-state">No settled predictions yet — check back after kickoff.</p>;
+    return (
+      <EmptyState icon={Flag}>
+        No settled picks yet. Make the call now and check back after the whistle.
+      </EmptyState>
+    );
   }
 
-  const resultText =
-    latest.correct === null
-      ? "Result pending"
+  const isPush = latest.question.result === "push";
+  const resultText = isPush
+    ? "It's a push"
+    : latest.correct === null
+      ? "Result on its way"
       : latest.correct
-        ? "You called it right"
+        ? "You called it"
         : "Not this time";
+  const resultTone = isPush
+    ? "result-push"
+    : latest.correct === null
+      ? "result-pending"
+      : latest.correct
+        ? "result-correct"
+        : "result-incorrect";
 
   async function handleShare() {
     const text = buildShareText({
@@ -56,20 +72,27 @@ export function ResultScreen() {
 
   return (
     <div className="screen result-screen">
-      <h2>{resultText}</h2>
-      <p className="result-question">{latest.question.question}</p>
-      <p className="result-stat">
-        Streak: {me?.currentStreak ?? 0} · Best: {me?.bestStreak ?? 0} · Points:{" "}
-        {me?.points ?? 0}
-      </p>
-      <p className="result-next">Next challenge: another card is waiting in the deck.</p>
+      <article className="result-card result-reveal">
+        <h2 className={`result-phrase type-display-l ${resultTone}`}>{resultText}</h2>
+        {isPush && <StatusBadge status="push" />}
+        <p className="result-question">{latest.question.question}</p>
+        <p className="result-stat tabular">
+          Streak: {me?.currentStreak ?? 0} · Best: {me?.bestStreak ?? 0} · Points:{" "}
+          {me?.points ?? 0}
+        </p>
+        <p className="result-next">
+          {latest.correct === false
+            ? "Next call is yours — another card is waiting in the deck."
+            : "Keep it rolling — another card is waiting in the deck."}
+        </p>
+        <button type="button" className="btn btn-primary" onClick={() => void handleShare()}>
+          Share result
+        </button>
+        {shareState === "copied" && <p role="status">Copied to clipboard.</p>}
+      </article>
       <div className="sponsor-slot" aria-label="Sponsor">
         Sponsored by TxODDS
       </div>
-      <button type="button" className="btn btn-primary" onClick={() => void handleShare()}>
-        Share result
-      </button>
-      {shareState === "copied" && <p role="status">Copied to clipboard.</p>}
     </div>
   );
 }

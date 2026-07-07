@@ -8,11 +8,17 @@ import {
 import { useAuth } from "../auth/auth-context";
 import type { Me } from "../lib/types";
 
+type Status = {
+  area: "name" | "delegation" | "delete";
+  tone: "success" | "error";
+  text: string;
+};
+
 export function ProfileScreen() {
   const { isAuthenticated, logout } = useAuth();
   const [me, setMe] = useState<Me | null>(null);
   const [name, setName] = useState("");
-  const [status, setStatus] = useState<string | null>(null);
+  const [status, setStatus] = useState<Status | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   useEffect(() => {
@@ -35,50 +41,88 @@ export function ProfileScreen() {
     try {
       const updated = await updateDisplayName(name);
       setMe(updated);
-      setStatus("Saved.");
+      setStatus({ area: "name", tone: "success", text: "Name saved." });
     } catch {
-      setStatus("Could not save name.");
+      setStatus({
+        area: "name",
+        tone: "error",
+        text: "Couldn't save your name. Try again.",
+      });
     }
   }
 
   async function handleRevoke() {
+    setStatus(null);
     try {
       await revokeDelegation();
-      setStatus("Delegation revoked.");
+      setStatus({
+        area: "delegation",
+        tone: "success",
+        text: "Delegation revoked.",
+      });
     } catch {
-      setStatus("Could not revoke delegation.");
+      setStatus({
+        area: "delegation",
+        tone: "error",
+        text: "Couldn't revoke delegation. Try again.",
+      });
     }
   }
 
   async function handleDelete() {
+    setStatus(null);
     try {
       await deleteAccount();
       logout();
     } catch {
-      setStatus("Could not delete account.");
+      setStatus({
+        area: "delete",
+        tone: "error",
+        text: "Couldn't delete your account. Try again.",
+      });
     }
+  }
+
+  function statusLine(area: Status["area"]) {
+    if (status?.area !== area) return null;
+    return (
+      <p role="status" className={`form-status form-status-${status.tone}`}>
+        {status.text}
+      </p>
+    );
   }
 
   return (
     <div className="screen profile-screen">
-      <h2>Profile</h2>
+      <h2 className="type-screen-title">Profile</h2>
 
-      <label htmlFor="display-name">Display name</label>
-      <input
-        id="display-name"
-        value={name}
-        onChange={(event) => setName(event.target.value)}
-      />
-      <button type="button" className="btn btn-primary" onClick={() => void handleSaveName()}>
-        Save name
-      </button>
+      <div className="profile-field">
+        <label htmlFor="display-name">Display name</label>
+        <input
+          id="display-name"
+          value={name}
+          onChange={(event) => setName(event.target.value)}
+        />
+        <button type="button" className="btn btn-primary" onClick={() => void handleSaveName()}>
+          Save name
+        </button>
+        {statusLine("name")}
+      </div>
 
-      <p className="wallet-address">
-        Wallet: {me.walletAddress ?? "not created yet"}
-      </p>
-      <button type="button" className="btn btn-outcome" onClick={() => void handleRevoke()}>
-        Revoke delegation
-      </button>
+      <div className="profile-field">
+        <span className="profile-label">Wallet</span>
+        {me.walletAddress ? (
+          <code className="wallet-address">{me.walletAddress}</code>
+        ) : (
+          <p className="type-body wallet-empty">
+            No wallet yet. Sign in again to create one.
+          </p>
+        )}
+        <button type="button" className="btn btn-secondary" onClick={() => void handleRevoke()}>
+          Revoke delegation
+        </button>
+        {statusLine("delegation")}
+      </div>
 
       <div className="danger-zone">
         {!confirmDelete ? (
@@ -90,22 +134,23 @@ export function ProfileScreen() {
             Delete account
           </button>
         ) : (
-          <div>
-            <p role="alert">
+          <div className="danger-confirm">
+            <p role="alert" className="type-body">
               Deleting your account anonymizes your profile. On-chain
               transactions cannot be erased and will remain on Solana.
             </p>
-            <button type="button" className="btn btn-danger" onClick={() => void handleDelete()}>
-              Confirm delete
-            </button>
-            <button type="button" className="btn btn-ghost" onClick={() => setConfirmDelete(false)}>
-              Cancel
-            </button>
+            <div className="danger-actions">
+              <button type="button" className="btn btn-danger" onClick={() => void handleDelete()}>
+                Delete my account
+              </button>
+              <button type="button" className="btn btn-ghost" onClick={() => setConfirmDelete(false)}>
+                Cancel
+              </button>
+            </div>
+            {statusLine("delete")}
           </div>
         )}
       </div>
-
-      {status && <p role="status">{status}</p>}
     </div>
   );
 }

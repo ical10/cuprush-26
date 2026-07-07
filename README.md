@@ -1,4 +1,4 @@
-# World Cup Hi-Lo
+# CupRush 26
 
 Mobile-first fan game: predict match and stat outcomes, save the pick through
 Solana, watch the card react to live TxLINE events, climb the leaderboard.
@@ -77,7 +77,7 @@ See `.env.example` for inline docs. Only the first three are required locally.
 |---|---|---|
 | `DATABASE_URL` | — (required) | Postgres connection string |
 | `PORT` | `3000` | Hono server port |
-| `AUTH_MODE` | `dev` | `dev` stub tokens or `privy` verification |
+| `AUTH_MODE` | `privy` | `privy` verification (fail-closed default) or explicit `dev` stub |
 | `TXLINE_MODE` | `replay` | `replay` captured fixtures or `live` stream |
 | `TXLINE_BASE_URL` / `TXLINE_API_KEY` | — | TxLINE origin (no `/api` suffix) + X-Api-Token key (live mode only; guest JWT self-minted) |
 | `TXLINE_REPLAY_INTERVAL_MS` | `1500` | ms between replayed events (0 = all at once) |
@@ -178,11 +178,14 @@ curl -s localhost:3000/api/leaderboard    # the dev user on top with 1 point
 
 `AUTH_MODE` selects the auth adapter (`src/api/auth`):
 
-- `dev` (default) — local stub. Any `Authorization: Bearer dev:<id>` header
-  authenticates as the fake Privy user `<id>`. Logs a loud warning on start
-  and refuses to run when `NODE_ENV=production`.
-- `privy` — verifies real Privy access tokens via `@privy-io/server-auth`;
-  requires `PRIVY_APP_ID` and `PRIVY_APP_SECRET`.
+- `privy` (default) — verifies real Privy access tokens via
+  `@privy-io/server-auth`; requires `PRIVY_APP_ID` and `PRIVY_APP_SECRET`
+  and throws at boot without them, so a deploy that forgets `AUTH_MODE`
+  fails closed instead of running unauthenticated.
+- `dev` — explicit opt-in local stub. Any `Authorization: Bearer dev:<id>`
+  header authenticates as the fake Privy user `<id>`. Logs a loud warning
+  on start and refuses to run under any prod-ish `NODE_ENV`
+  (production/prod/staging, case-insensitive).
 
 The first authenticated request provisions a `participants` row
 (kind=human) plus a `users` row mapping the Privy user id, in one
@@ -198,3 +201,29 @@ Semantics worth knowing:
 - `DELETE /api/me` anonymizes: deletes the `users` row and clears the
   display name, but keeps the participant, wallet link, and predictions.
   On-chain data cannot be erased — the client must disclose this first.
+
+## Deploy (Railway)
+
+Two services: the **app** (this repo) and a Railway **Postgres**.
+`railway.json` carries the config-as-code: Railpack build
+(`pnpm install --frozen-lockfile && pnpm build`), migrations as the
+pre-deploy command (`pnpm exec tsx src/db/migrate.ts`), start command
+`pnpm exec tsx src/api/server.ts`, healthcheck at `/api/health`, restart
+on failure. Keep a single replica — the SSE bus is in-memory, so the app
+cannot scale horizontally.
+
+Environment variables per environment:
+
+| Variable | Demo env (now) | Production (once Privy creds land) |
+|---|---|---|
+| `DATABASE_URL` | reference variable `${{Postgres.DATABASE_URL}}` | same |
+| `AUTH_MODE` | `dev` | `privy` |
+| `NODE_ENV` | `development` — the dev auth stub refuses prod-ish values | `production` |
+| `TXLINE_MODE` | `replay` (bundled fixtures, zero creds) | `live` + TxLINE creds |
+| `PRIVY_APP_ID` / `PRIVY_APP_SECRET` | unset | required |
+| `PORT` | Railway-injected | same |
+
+Auth fails closed: leaving `AUTH_MODE` unset selects the Privy adapter,
+which refuses to boot without `PRIVY_APP_ID`/`PRIVY_APP_SECRET`. A deploy
+that forgets `AUTH_MODE` crashes instead of silently accepting stub
+tokens — set `AUTH_MODE=dev` explicitly on the demo environment.

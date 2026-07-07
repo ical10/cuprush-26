@@ -5,7 +5,7 @@ import { PrivyAuthStub } from "../auth/privy-auth-stub";
 export function AuthScreen({ onDone }: { onDone(): void }) {
   return (
     <div className="screen auth-screen">
-      <h2>Sign in</h2>
+      <h2 className="type-screen-title">Sign in</h2>
       {authMode() === "privy" ? (
         <PrivyAuthStub onDone={onDone} />
       ) : (

@@ -1,9 +1,9 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { CardDeck } from "./card-deck";
 import { AuthProvider } from "../auth/auth-context";
-import { setToken } from "../lib/auth-storage";
+import { clearToken, setToken } from "../lib/auth-storage";
 import type { Question } from "../lib/types";
 
 const { fetchQuestions, submitPredictionBatch } = vi.hoisted(() => ({
@@ -57,6 +57,7 @@ describe("CardDeck batching", () => {
   beforeEach(() => {
     fetchQuestions.mockReset();
     submitPredictionBatch.mockReset();
+    clearToken();
   });
 
   it("answers every card locally without any network call until submit", async () => {
@@ -71,7 +72,7 @@ describe("CardDeck batching", () => {
     await user.click(screen.getByRole("button", { name: "No" }));
 
     // Deck exhausted, still zero network submissions.
-    const submit = await screen.findByRole("button", { name: "Submit picks" });
+    const submit = await screen.findByRole("button", { name: "Lock my picks" });
     expect(submitPredictionBatch).not.toHaveBeenCalled();
 
     await user.click(submit);
@@ -90,7 +91,7 @@ describe("CardDeck batching", () => {
 
     await screen.findByText("Q q1?");
     await user.click(screen.getByRole("button", { name: "Yes" }));
-    await user.click(await screen.findByRole("button", { name: "Submit picks" }));
+    await user.click(await screen.findByRole("button", { name: "Lock my picks" }));
 
     // Failure surfaces the reason and a retry, answers preserved.
     await screen.findByText(/rpc down/);
@@ -101,5 +102,42 @@ describe("CardDeck batching", () => {
     expect(submitPredictionBatch).toHaveBeenLastCalledWith([
       { questionId: "q1", outcome: "yes" },
     ]);
+  });
+
+  it("renders the action rail outside the draggable card, No left and Yes right", async () => {
+    fetchQuestions.mockResolvedValue([question("q1")]);
+    renderDeck();
+
+    await screen.findByText("Q q1?");
+    const rail = screen.getByRole("group", { name: "Answer this question" });
+    const buttons = within(rail).getAllByRole("button");
+    expect(buttons.map((b) => b.textContent)).toEqual(["No", "Yes"]);
+
+    // The rail never moves with the card: no button lives inside it.
+    const card = screen.getByTestId("question-card");
+    expect(card).not.toContainElement(buttons[0]!);
+    expect(card).not.toContainElement(buttons[1]!);
+    expect(within(card).queryByRole("button")).not.toBeInTheDocument();
+  });
+
+  it("disables the rail and the card while the sign-in gate is open", async () => {
+    fetchQuestions.mockResolvedValue([question("q1")]);
+    const user = userEvent.setup();
+    // No token: answering opens the save prompt instead of recording.
+    render(
+      <AuthProvider>
+        <CardDeck onNavigateAuth={() => {}} />
+      </AuthProvider>,
+    );
+
+    await screen.findByText("Q q1?");
+    await user.click(screen.getByRole("button", { name: "Yes" }));
+    await screen.findByText(/Save your pick/);
+
+    // The modal hides the page from the a11y tree, hence hidden: true.
+    const rail = screen.getByRole("group", { name: "Answer this question", hidden: true });
+    for (const button of within(rail).getAllByRole("button", { hidden: true })) {
+      expect(button).toBeDisabled();
+    }
   });
 });

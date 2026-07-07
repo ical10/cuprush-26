@@ -17,7 +17,9 @@ describe("TxStatus", () => {
   it("renders a retry action on failure", async () => {
     const onRetry = vi.fn();
     render(<TxStatus state="failed" onRetry={onRetry} />);
-    expect(screen.getByRole("alert")).toHaveTextContent("Save failed.");
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "That save didn't go through. Your pick is still here.",
+    );
     await userEvent.click(screen.getByRole("button", { name: "Retry" }));
     expect(onRetry).toHaveBeenCalled();
   });

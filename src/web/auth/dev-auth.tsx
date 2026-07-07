@@ -27,7 +27,7 @@ export function DevAuth({ onDone }: { onDone(): void }) {
 
   return (
     <form className="auth-form" onSubmit={handleSubmit}>
-      <label htmlFor="dev-name">Enter any name to continue</label>
+      <label htmlFor="dev-name">Enter any name to sign in</label>
       <input
         id="dev-name"
         name="name"
@@ -37,11 +37,11 @@ export function DevAuth({ onDone }: { onDone(): void }) {
         placeholder="e.g. Husni"
       />
       <p className="disclosure">
-        Locked on Solana. Creating an account creates a wallet and may submit
-        approved game transactions on your behalf.
+        Signing in creates an account with an embedded wallet and may submit
+        approved game transactions to Solana on your behalf.
       </p>
       <button type="submit" className="btn btn-primary" disabled={!name.trim()}>
-        Continue
+        Sign in
       </button>
     </form>
   );

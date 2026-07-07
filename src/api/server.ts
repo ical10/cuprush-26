@@ -26,7 +26,7 @@ if (existsSync("./dist/client")) {
 const port = Number(process.env.PORT ?? 3000);
 
 const server = serve({ fetch: app.fetch, port }, (info) => {
-  console.log(`world-cup-hilo api listening on http://localhost:${info.port}`);
+  console.log(`cuprush-26 api listening on http://localhost:${info.port}`);
 });
 
 // Backend owns the one TxLINE stream for the whole process (replay by
