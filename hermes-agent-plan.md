@@ -168,7 +168,7 @@ If a child fails, retry it once with a deterministic fallback prompt that requir
 - Set delegation concurrency to five.
 - Give the cron session only `delegation` and the `cohort` MCP toolset.
 - Give delegated children no toolsets.
-- Load `HILO_COHORT_TOKEN` from Hermes environment configuration.
+- Load `CUPRUSH_COHORT_TOKEN` from Hermes environment configuration.
 - Keep the token out of prompts, task context, seed data, and logs.
 - Configure the pre-check script with a short HTTP timeout and fail closed.
 
