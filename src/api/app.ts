@@ -44,7 +44,7 @@ export function createApp(options: CreateAppOptions = {}) {
   // and refuses to start when NODE_ENV=production.
   const auth = options.auth ?? createAuthAdapterFromEnv();
 
-  // CHAIN_MODE=solana selects the mainnet adapter (HITL skeleton, issue 13);
+  // CHAIN_MODE=solana selects the devnet adapter (HITL skeleton, issue 13);
   // the in-memory stub is the default for dev and tests.
   const chain = options.chain ?? createChainAdapterFromEnv();
 

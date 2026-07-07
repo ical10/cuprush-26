@@ -23,7 +23,7 @@ non-goals).
 | `DATABASE_URL` | Railway Postgres ref `${{Postgres.DATABASE_URL}}` | same |
 | `AUTH_MODE` | `dev` (no Privy creds yet) | `privy` |
 | `NODE_ENV` | **`development`** — dev auth stub refuses production/prod/staging (by design, commit 682c2ac) | `production` |
-| `TXLINE_MODE` | `replay` (demo fixtures, zero creds) | `live` + mainnet creds |
+| `TXLINE_MODE` | `replay` (demo fixtures, zero creds) | `live` + devnet creds (service level 1, already activated) |
 | `PRIVY_APP_ID/SECRET` | unset | HITL #13 |
 | `PORT` | Railway-injected | same |
 
@@ -76,6 +76,6 @@ Single workflow, push to main + PRs:
 
 ## Out of scope / HITL
 
-- Privy production credentials, mainnet TxLINE, `AUTH_MODE=privy` flip (#13)
+- Privy production credentials, `AUTH_MODE=privy` flip (#13) — TxLINE devnet creds (service level 1) already live
 - Custom domain, monitoring/alerting beyond Railway defaults
 - Preview environments per PR (Railway supports; add later if wanted)

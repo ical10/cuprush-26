@@ -3,7 +3,8 @@
 ## Goal
 Prove the TxLINE credential pipeline on **devnet** with a throwaway wallet — no
 real SOL, no TxL tokens. Produce a devnet `X-Api-Token`, confirm a data call
-returns. Validates the flow before any mainnet level-12 run.
+returns. This devnet flow is the production target (decision 2026-07-07:
+devnet-only, no mainnet run anywhere).
 
 ## Scope
 Devnet only. Service level 1 (World Cup + International Friendlies, 60s delay),
@@ -94,8 +95,6 @@ any prior step produced bad creds. No separate test file for a one-off script.
 ## Out of scope (follow-ups)
 - `live-client.ts` rework to the real API (2 headers, SSE, real endpoints,
   JWT refresh loop for the 30-day expiry).
-- Mainnet level-12 activation with the user's funded wallet (same script,
-  mainnet constants + `--mainnet` flag later).
 - Settlement integration with TxOracle `validateStat` (Add/Subtract/Equal/
   GreaterThan/LessThan, Merkle-proof accounts): adopt `@coral-xyz/anchor`
   there — multiple instructions + nontrivial account structs justify the
