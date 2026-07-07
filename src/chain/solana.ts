@@ -45,7 +45,7 @@ import idlJson from "./idl/world_cup_hilo.json";
 
 export type SolanaChainEnv = {
   SOLANA_RPC_URL?: string;
-  HILO_PROGRAM_ID?: string;
+  CUPRUSH_PROGRAM_ID?: string;
   SOLANA_PRIVATE_KEY?: string;
 };
 
@@ -235,7 +235,7 @@ export function createSolanaChainAdapter(
   env: SolanaChainEnv = process.env,
   options: SolanaChainAdapterOptions = {},
 ): ChainAdapter {
-  const missing = (["HILO_PROGRAM_ID", "SOLANA_PRIVATE_KEY"] as const).filter(
+  const missing = (["CUPRUSH_PROGRAM_ID", "SOLANA_PRIVATE_KEY"] as const).filter(
     (name) => !env[name],
   );
   if (missing.length > 0) {
@@ -248,11 +248,11 @@ export function createSolanaChainAdapter(
 
   let programId: PublicKey;
   try {
-    programId = new PublicKey(env.HILO_PROGRAM_ID as string);
+    programId = new PublicKey(env.CUPRUSH_PROGRAM_ID as string);
   } catch {
     throw new ChainError(
       "not_configured",
-      "solana chain adapter is not configured: HILO_PROGRAM_ID is not a valid public key",
+      "solana chain adapter is not configured: CUPRUSH_PROGRAM_ID is not a valid public key",
     );
   }
 

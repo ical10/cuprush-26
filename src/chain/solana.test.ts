@@ -22,7 +22,7 @@ const BLOCKHASH = Keypair.generate().publicKey.toBase58();
 const coder = new BorshCoder(idlJson as Idl);
 
 const env = {
-  HILO_PROGRAM_ID: PROGRAM_ID,
+  CUPRUSH_PROGRAM_ID: PROGRAM_ID,
   SOLANA_PRIVATE_KEY: JSON.stringify(Array.from(AUTHORITY.secretKey)),
 };
 
@@ -99,14 +99,14 @@ function batchCommitmentTx(
 }
 
 describe("solana adapter configuration (fail closed)", () => {
-  it("requires HILO_PROGRAM_ID and SOLANA_PRIVATE_KEY", () => {
+  it("requires CUPRUSH_PROGRAM_ID and SOLANA_PRIVATE_KEY", () => {
     expect(() => createSolanaChainAdapter({})).toThrowError(/not configured/i);
     expect(() =>
-      createSolanaChainAdapter({ HILO_PROGRAM_ID: PROGRAM_ID }),
+      createSolanaChainAdapter({ CUPRUSH_PROGRAM_ID: PROGRAM_ID }),
     ).toThrowError(/SOLANA_PRIVATE_KEY/);
     expect(() =>
       createSolanaChainAdapter({ SOLANA_PRIVATE_KEY: env.SOLANA_PRIVATE_KEY }),
-    ).toThrowError(/HILO_PROGRAM_ID/);
+    ).toThrowError(/CUPRUSH_PROGRAM_ID/);
     try {
       createSolanaChainAdapter({});
       expect.unreachable("construction must fail");
@@ -118,17 +118,17 @@ describe("solana adapter configuration (fail closed)", () => {
   it("rejects an invalid program id as not_configured", () => {
     expect(() =>
       createSolanaChainAdapter({
-        HILO_PROGRAM_ID: "not-a-key",
+        CUPRUSH_PROGRAM_ID: "not-a-key",
         SOLANA_PRIVATE_KEY: env.SOLANA_PRIVATE_KEY,
       }),
-    ).toThrowError(/HILO_PROGRAM_ID is not a valid public key/);
+    ).toThrowError(/CUPRUSH_PROGRAM_ID is not a valid public key/);
   });
 
   it("rejects bad key material without echoing the secret", () => {
     const secret = "super-secret-not-a-key";
     try {
       createSolanaChainAdapter({
-        HILO_PROGRAM_ID: PROGRAM_ID,
+        CUPRUSH_PROGRAM_ID: PROGRAM_ID,
         SOLANA_PRIVATE_KEY: secret,
       });
       expect.unreachable("construction must fail");
@@ -141,7 +141,7 @@ describe("solana adapter configuration (fail closed)", () => {
   it("accepts a base58-encoded secret key too", () => {
     const adapter = createSolanaChainAdapter(
       {
-        HILO_PROGRAM_ID: PROGRAM_ID,
+        CUPRUSH_PROGRAM_ID: PROGRAM_ID,
         SOLANA_PRIVATE_KEY: utils.bytes.bs58.encode(AUTHORITY.secretKey),
       },
       { connection: fakeRpc() },

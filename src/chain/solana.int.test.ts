@@ -6,14 +6,14 @@ import { createSolanaChainAdapter } from "./solana";
 
 /**
  * Real devnet round trip against the deployed world_cup_hilo program. Auto
- * skips unless HILO_PROGRAM_ID and SOLANA_PRIVATE_KEY are set (the private
+ * skips unless CUPRUSH_PROGRAM_ID and SOLANA_PRIVATE_KEY are set (the private
  * key must belong to a funded devnet wallet — it pays rent and fees).
  * Every run uses a fresh random rule hash and a throwaway wallet, so runs
  * never collide with each other on chain.
  */
 
 const configured = Boolean(
-  process.env.HILO_PROGRAM_ID && process.env.SOLANA_PRIVATE_KEY,
+  process.env.CUPRUSH_PROGRAM_ID && process.env.SOLANA_PRIVATE_KEY,
 );
 
 const TX_TIMEOUT_MS = 120_000;
