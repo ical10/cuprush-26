@@ -153,12 +153,15 @@ button {
   display: flex;
   flex-direction: column;
   min-height: 100vh;
+  min-height: 100dvh;
   max-width: 480px;
   margin: 0 auto;
 }
 
+/* Safe areas (DESIGN.md § 01): header clears the notch, nav clears the home
+   indicator. viewport-fit=cover is set in index.html. */
 .app-header {
-  padding: 1rem;
+  padding: calc(1rem + env(safe-area-inset-top, 0px)) 1rem 1rem;
   text-align: center;
 }
 
@@ -191,6 +194,7 @@ button {
   display: flex;
   border-top: 1px solid var(--border);
   background: var(--surface);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
 .nav-item {
@@ -274,7 +278,12 @@ button {
   text-align: center;
 }
 
+/* Single-block states own the screen: auto block margins center them inside
+   .app-main's flex column (same pattern as .deck-screen). Inside a screen
+   that has other content (e.g. the leaderboard title), the margins only
+   absorb whatever free space that screen grants. */
 .empty-state {
+  margin-block: auto;
   text-align: center;
   color: var(--text-dim);
   padding: 3rem 1rem;
@@ -511,6 +520,14 @@ button {
   color: var(--text);
 }
 
+/* Rush Lime marks focus (DESIGN.md § 04) — same treatment as .profile-field
+   inputs; without it the autofocused field shows the browser's blue ring. */
+.auth-form input:focus-visible {
+  border-color: var(--accent);
+  outline: 3px solid color-mix(in oklab, var(--accent) 45%, transparent);
+  outline-offset: 2px;
+}
+
 .live-card {
   background: var(--surface);
   border: 1px solid var(--border);
@@ -677,9 +694,17 @@ button {
 }
 
 /* One decision owns the screen: auto block margins center the deck block
-   within .app-main (a flex column). Other screens stay top-anchored. */
-.deck-screen {
+   within .app-main (a flex column). The auth screen (one decision: sign in)
+   centers the same way. List and form screens stay top-anchored. */
+.deck-screen,
+.auth-screen {
   margin-block: auto;
+}
+
+/* Grows so the empty state can center in the space below the title; with
+   rows present the table still flows from the top. */
+.leaderboard-screen {
+  flex: 1;
 }
 
 /* 8–12px gap between the deck and its action rail, tighter than the
