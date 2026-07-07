@@ -287,7 +287,7 @@ If embedded wallet integration blocks the core demo, fall back to a standard Sol
 | Live client updates | Server-Sent Events | Same one-way model as TxLINE; browser reconnects automatically |
 | Wallet | Privy embedded wallet + sponsorship | Delegated signing with sponsored Solana fees |
 | AI | Small OpenRouter model | Background question selection with deterministic fallback |
-| Network | Solana mainnet + TxLINE level 12 | Matching cluster and real-time World Cup updates |
+| Network | Solana devnet + TxLINE devnet (service level 1) | Matching cluster and live World Cup updates |
 
 Do not add Redis for the PoC. One process can hold current fixture state in memory, while Postgres retains anything that must survive a restart.
 
@@ -564,19 +564,19 @@ Prefer Privy's native Solana sponsorship with app gas credits. Use a custom back
 
 #### Funding decision
 
-For the custom path, fund one capped fee-payer wallet with mainnet SOL. Users need no SOL balance while sponsorship is active.
+For the custom path, fund one capped fee-payer wallet with devnet SOL from the faucet. Users need no SOL balance while sponsorship is active.
 
 If Privy manages sponsorship through app credits, fund that account instead of operating a fee-payer key.
 
 Do not send 0.1 SOL to every embedded wallet. It creates a drainable faucet and funds far more transactions than the game needs.
 
-Do not fall back to prefunding user wallets on mainnet. If sponsorship is unavailable, show a maintenance state and restore service after the sponsor is funded.
+Do not fall back to prefunding user wallets. If sponsorship is unavailable, show a maintenance state and restore service after the sponsor is funded.
 
-Use devnet only for isolated contract tests. The live demo uses mainnet end to end so TxLINE level 12, TxOracle roots, and the CupRush 26 program share one cluster.
+The live demo runs devnet end to end so the TxLINE devnet feed (service level 1), TxOracle roots, and the CupRush 26 program share one cluster.
 
 USDC cannot pay native Solana fees through Privy's current user-pays mode; that mode is EVM-only. A USDC credit or conversion system is post-hackathon scope.
 
-Require manual security review before enabling delegated signing or sponsorship on mainnet.
+Require manual security review before enabling delegated signing or sponsorship in production.
 
 ### Test strategy
 
@@ -604,7 +604,7 @@ Use Vitest for unit and integration tests. Add Cypress only after the core flow 
 
 Run migrations before the integration suite and reset the test schema between files. Do not use SQLite; its constraints and transactions differ from Postgres.
 
-Keep live mainnet checks outside CI. Run one manual smoke test for TxLINE level 12, sponsored signing, and settlement before recording the demo.
+Keep live devnet checks outside CI. Run one manual smoke test for the TxLINE devnet feed, sponsored signing, and settlement before recording the demo.
 
 #### Later Cypress coverage
 
@@ -668,7 +668,7 @@ Clearly label recorded-event replay as demo mode. The deployed app must also sup
 
 ### Day 1: prove the risky integrations
 
-- `[HITL]` Activate TxLINE level 12 and provide the credentials.
+- `[HITL]` Activate TxLINE devnet (service level 1) and provide the credentials — already done.
 - `[HERMES-BUILD]` Capture and schema-validate a real scores-stream payload.
 - `[HITL]` Provide Privy credentials and approve the wallet and sponsorship setup.
 - `[HERMES-BUILD]` Create one wallet, send one sponsored prediction, and test one intra-fixture and one inter-fixture settlement path.
@@ -689,7 +689,7 @@ Clearly label recorded-event replay as demo mode. The deployed app must also sup
 - `[HERMES-BUILD]` Add onboarding, transaction states, the share card, and sponsor placement.
 - `[HERMES-BUILD]` Test mobile, keyboard, reconnect, and reduced-motion flows.
 - `[HERMES-BUILD]` Prepare deployment configuration, endpoint documentation, and the demo script.
-- `[HITL]` Run the mainnet smoke test, approve the final security review, deploy, record the demo, make the repository public, and submit the entry.
+- `[HITL]` Run the devnet smoke test, approve the final security review, deploy, record the demo, make the repository public, and submit the entry.
 
 Build the optional AI pundit only after the question-selection LLM and end-to-end flow are stable.
 
@@ -698,7 +698,7 @@ Build the optional AI pundit only after the question-selection LLM and end-to-en
 ## Definition of done
 
 - The deployed app works during a match.
-- TxLINE level 12 supplies real-time mainnet input.
+- TxLINE devnet (service level 1) supplies live World Cup input.
 - A fan can complete the flow without owning SOL.
 - Email OTP restores the same identity and wallet.
 - Drizzle migrations create all five constrained core tables.

@@ -5,7 +5,7 @@
 ## Delivery ownership
 
 - **`[HERMES-BUILD]`** The implementation Hermes writes the schema, MCP tools, cron scripts, seed and provisioning commands, UI changes, tests, and setup documentation.
-- **`[HITL]`** A human supplies Privy and Hermes credentials, approves auth or user-data changes, installs the cohort token, deploys the gateway, and runs the live mainnet check.
+- **`[HITL]`** A human supplies Privy and Hermes credentials, approves auth or user-data changes, installs the cohort token, deploys the gateway, and runs the live devnet check.
 - Runtime cohort parents and subagents are product actors, not build owners.
 
 ## Goal

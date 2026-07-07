@@ -70,7 +70,7 @@ A mobile-first fan game where fans predict the match winner and quick stat outco
 
 ### On-chain program (Anchor)
 
-- One small program, mainnet target, two accounts: **Question** (rule hash, fixture IDs, stat keys, operator, predicate, threshold/benchmark, opens_at, locks_at, result, status) and **Prediction** (question, player wallet, outcome, submitted timestamp, resolved flag, correctness).
+- One small program, devnet target, two accounts: **Question** (rule hash, fixture IDs, stat keys, operator, predicate, threshold/benchmark, opens_at, locks_at, result, status) and **Prediction** (question, player wallet, outcome, submitted timestamp, resolved flag, correctness).
 - Three instructions: `create_question`, `submit_prediction`, `settle_question`. One Question PDA per question; one Prediction PDA per (wallet, question). `submit_prediction` enforces `opens_at`/`locks_at` on-chain.
 - Inter-fixture: `create_question` proves the benchmark (Equal predicate) and stores it; `settle_question` validates the new fixture against it. Unprovable benchmark at open time → fall back to intra-fixture template.
 - One proven question result reused for every prediction; never a per-user oracle call. A template enters the registry only after its TxOracle settlement test passes.
@@ -98,7 +98,7 @@ A mobile-first fan game where fans predict the match winner and quick stat outco
 | Database | Postgres + Drizzle ORM |
 | Validation | Zod + Hono Zod Validator |
 | Auth/Wallet | Privy email OTP + embedded Solana wallet + sponsorship |
-| Chain | One Anchor program, Solana mainnet + TxLINE level 12 |
+| Chain | One Anchor program, Solana devnet + TxLINE devnet (service level 1) |
 | Live updates | Server-Sent Events |
 | AI | Small OpenRouter model, deterministic fallback |
 | Tests | Vitest (unit + integration against real Postgres) |
@@ -114,8 +114,8 @@ One TypeScript package, one lockfile, one deployment. `src/web` (PWA), `src/api`
 - **No TxLINE credentials yet** → the TxLINE client supports a recorded-replay/demo mode driven by captured JSON fixture files; live mode is env-gated.
 - **No Privy credentials yet** → Privy sits behind an env-gated adapter with a dev-mode auth stub so the full flow runs locally end-to-end.
 - **No Docker; local Postgres 18 on the default socket** → integration tests run against a local test database. Node 22 + pnpm.
-- **Anchor program ships as source** plus a TS chain adapter interface with an in-memory stub used by local dev and tests; mainnet deploy is HITL.
-- **HITL (tracked, not implemented):** TxLINE level 12 activation, Privy app + sponsorship funding, mainnet program deploy, manual security review of all auth/user-data/delegation/sponsorship code, production deployment, demo video, submission.
+- **Anchor program ships as source** plus a TS chain adapter interface with an in-memory stub used by local dev and tests; devnet deploy is HITL.
+- **HITL (tracked, not implemented):** Privy app + sponsorship funding, devnet program deploy, manual security review of all auth/user-data/delegation/sponsorship code, production deployment, demo video, submission. TxLINE devnet activation (service level 1) is already done.
 
 ## Out of scope
 
@@ -124,7 +124,7 @@ One TypeScript package, one lockfile, one deployment. `src/web` (PWA), `src/api`
 ## Definition of done
 
 - The deployed app works during a match.
-- TxLINE level 12 supplies real-time mainnet input.
+- TxLINE devnet (service level 1) supplies live World Cup input.
 - A fan can complete the flow without owning SOL.
 - Email OTP restores the same identity and wallet.
 - Drizzle migrations create all five constrained core tables.
@@ -140,4 +140,4 @@ One TypeScript package, one lockfile, one deployment. `src/web` (PWA), `src/api`
 - The demo video is under five minutes and shows the full journey.
 - The submission includes candid feedback about the TxLINE API.
 
-Items requiring live credentials, mainnet, deployment, or human sign-off are delivered as HITL-ready: code complete, tested against stubs/replay, documented for the human gate.
+Items requiring live credentials, devnet deploys, deployment, or human sign-off are delivered as HITL-ready: code complete, tested against stubs/replay, documented for the human gate.

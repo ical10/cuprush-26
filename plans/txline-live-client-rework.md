@@ -69,5 +69,4 @@ seq/ordering field, and game-state vocabulary.
   improvising.
 
 ## Out of scope
-- Mainnet level-12 activation (separate; same script with --mainnet later)
 - TxOracle settlement (`validateStat`, anchor adoption — separate plan)
