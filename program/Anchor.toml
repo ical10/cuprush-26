@@ -5,11 +5,11 @@ anchor_version = "1.1.2"
 resolution = true
 skip-lint = false
 
-[programs.mainnet]
-world_cup_hilo = "2Yon9VrntK9ASpvHRJ1NzeTFBziWtUWPYVBZZWdk68to"
+[programs.devnet]
+world_cup_hilo = "9u7uuj7S8kMon564b4TA8Gc7RaYXSC5QgjDz8fFgmGCU"
 
 [provider]
-cluster = "mainnet"
+cluster = "devnet"
 wallet = "~/.config/solana/id.json"
 
 [hooks]
