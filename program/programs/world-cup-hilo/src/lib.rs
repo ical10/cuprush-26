@@ -16,7 +16,7 @@
 
 use anchor_lang::prelude::*;
 
-declare_id!("2Yon9VrntK9ASpvHRJ1NzeTFBziWtUWPYVBZZWdk68to");
+declare_id!("9u7uuj7S8kMon564b4TA8Gc7RaYXSC5QgjDz8fFgmGCU");
 
 pub const QUESTION_SEED: &[u8] = b"question";
 pub const PREDICTION_SEED: &[u8] = b"prediction";

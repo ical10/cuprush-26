@@ -1,0 +1,636 @@
+{
+  "address": "9u7uuj7S8kMon564b4TA8Gc7RaYXSC5QgjDz8fFgmGCU",
+  "metadata": {
+    "name": "world_cup_hilo",
+    "version": "0.1.0",
+    "spec": "0.1.0",
+    "description": "World Cup Hi-Lo on-chain question + prediction program"
+  },
+  "instructions": [
+    {
+      "name": "create_question",
+      "docs": [
+        "Creates the one immutable Question account for a canonical rule.",
+        "PDA seeds `[b\"question\", rule_hash]` make re-creation of the same",
+        "rule fail at the runtime level (account already in use)."
+      ],
+      "discriminator": [
+        222,
+        74,
+        49,
+        30,
+        160,
+        220,
+        179,
+        27
+      ],
+      "accounts": [
+        {
+          "name": "question",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  113,
+                  117,
+                  101,
+                  115,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "arg",
+                "path": "args.rule_hash"
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "args",
+          "type": {
+            "defined": {
+              "name": "CreateQuestionArgs"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "settle_question",
+      "docs": [
+        "Settles the question exactly once. The authority derives `result`",
+        "from TxOracle-proven stats (for inter-fixture questions, validating",
+        "the new fixture against the stored benchmark) off-chain; a repeated",
+        "call is refused so a retry must read the existing on-chain result."
+      ],
+      "discriminator": [
+        127,
+        226,
+        219,
+        222,
+        71,
+        179,
+        68,
+        102
+      ],
+      "accounts": [
+        {
+          "name": "question",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  113,
+                  117,
+                  101,
+                  115,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "question.rule_hash",
+                "account": "Question"
+              }
+            ]
+          }
+        },
+        {
+          "name": "authority",
+          "signer": true,
+          "relations": [
+            "question"
+          ]
+        }
+      ],
+      "args": [
+        {
+          "name": "result",
+          "type": {
+            "defined": {
+              "name": "QuestionResult"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "submit_prediction",
+      "docs": [
+        "Records one immutable prediction for (question, player). PDA seeds",
+        "`[b\"prediction\", question, player]` mean a second submission for the",
+        "same pair fails at `init` — the choice can never change. The open",
+        "window is enforced on-chain against the cluster clock."
+      ],
+      "discriminator": [
+        193,
+        113,
+        41,
+        36,
+        160,
+        60,
+        247,
+        55
+      ],
+      "accounts": [
+        {
+          "name": "question",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  113,
+                  117,
+                  101,
+                  115,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "question.rule_hash",
+                "account": "Question"
+              }
+            ]
+          }
+        },
+        {
+          "name": "prediction",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  114,
+                  101,
+                  100,
+                  105,
+                  99,
+                  116,
+                  105,
+                  111,
+                  110
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "question"
+              },
+              {
+                "kind": "account",
+                "path": "player"
+              }
+            ]
+          }
+        },
+        {
+          "name": "player",
+          "docs": [
+            "The embedded user wallet: owns the prediction and authorizes it."
+          ],
+          "signer": true
+        },
+        {
+          "name": "payer",
+          "docs": [
+            "The sponsored fee payer (Privy sponsorship or app fee-payer wallet);",
+            "pays rent + fees so the player never needs SOL."
+          ],
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "outcome",
+          "type": {
+            "defined": {
+              "name": "Outcome"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "accounts": [
+    {
+      "name": "Prediction",
+      "discriminator": [
+        98,
+        127,
+        141,
+        187,
+        218,
+        33,
+        8,
+        14
+      ]
+    },
+    {
+      "name": "Question",
+      "discriminator": [
+        111,
+        22,
+        150,
+        220,
+        181,
+        122,
+        118,
+        127
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "InvalidWindow",
+      "msg": "locks_at must be after opens_at"
+    },
+    {
+      "code": 6001,
+      "name": "FieldTooLong",
+      "msg": "a string field exceeds its maximum length"
+    },
+    {
+      "code": 6002,
+      "name": "MissingBenchmark",
+      "msg": "an inter-fixture question requires a proven benchmark"
+    },
+    {
+      "code": 6003,
+      "name": "QuestionNotOpen",
+      "msg": "the question is not open"
+    },
+    {
+      "code": 6004,
+      "name": "BeforeOpen",
+      "msg": "predictions are not accepted before opens_at"
+    },
+    {
+      "code": 6005,
+      "name": "AfterLock",
+      "msg": "predictions are not accepted at or after locks_at"
+    },
+    {
+      "code": 6006,
+      "name": "AlreadySettled",
+      "msg": "the question is already settled"
+    },
+    {
+      "code": 6007,
+      "name": "UnauthorizedSettlement",
+      "msg": "only the question authority may settle it"
+    }
+  ],
+  "types": [
+    {
+      "name": "Comparison",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "Equal"
+          },
+          {
+            "name": "GreaterThan"
+          },
+          {
+            "name": "LessThan"
+          }
+        ]
+      }
+    },
+    {
+      "name": "CreateQuestionArgs",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "rule_hash",
+            "docs": [
+              "sha256 of the canonical rule (src/questions/rule-hash.ts)."
+            ],
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "fixture_id",
+            "type": "string"
+          },
+          {
+            "name": "benchmark_fixture_id",
+            "docs": [
+              "Set only for inter-fixture benchmark questions."
+            ],
+            "type": {
+              "option": "string"
+            }
+          },
+          {
+            "name": "stat_key_1",
+            "type": "string"
+          },
+          {
+            "name": "stat_key_2",
+            "type": "string"
+          },
+          {
+            "name": "operator",
+            "type": {
+              "defined": {
+                "name": "Operator"
+              }
+            }
+          },
+          {
+            "name": "comparison",
+            "type": {
+              "defined": {
+                "name": "Comparison"
+              }
+            }
+          },
+          {
+            "name": "threshold",
+            "type": {
+              "option": "i64"
+            }
+          },
+          {
+            "name": "benchmark",
+            "docs": [
+              "Proven benchmark value (required when benchmark_fixture_id is set)."
+            ],
+            "type": {
+              "option": "i64"
+            }
+          },
+          {
+            "name": "opens_at",
+            "type": "i64"
+          },
+          {
+            "name": "locks_at",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Operator",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "Add"
+          },
+          {
+            "name": "Subtract"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Outcome",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "Yes"
+          },
+          {
+            "name": "No"
+          },
+          {
+            "name": "Higher"
+          },
+          {
+            "name": "Lower"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Prediction",
+      "docs": [
+        "One player's immutable choice on one question."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "question",
+            "type": "pubkey"
+          },
+          {
+            "name": "player",
+            "type": "pubkey"
+          },
+          {
+            "name": "outcome",
+            "type": {
+              "defined": {
+                "name": "Outcome"
+              }
+            }
+          },
+          {
+            "name": "submitted_at",
+            "type": "i64"
+          },
+          {
+            "name": "resolved",
+            "type": "bool"
+          },
+          {
+            "name": "correct",
+            "type": "bool"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "Question",
+      "docs": [
+        "One immutable question rule. The database keeps the human-readable copy;",
+        "this account keeps only what settlement and verification need."
+      ],
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "authority",
+            "docs": [
+              "Only this key may settle the question."
+            ],
+            "type": "pubkey"
+          },
+          {
+            "name": "rule_hash",
+            "type": {
+              "array": [
+                "u8",
+                32
+              ]
+            }
+          },
+          {
+            "name": "fixture_id",
+            "type": "string"
+          },
+          {
+            "name": "benchmark_fixture_id",
+            "type": {
+              "option": "string"
+            }
+          },
+          {
+            "name": "stat_key_1",
+            "type": "string"
+          },
+          {
+            "name": "stat_key_2",
+            "type": "string"
+          },
+          {
+            "name": "operator",
+            "type": {
+              "defined": {
+                "name": "Operator"
+              }
+            }
+          },
+          {
+            "name": "comparison",
+            "type": {
+              "defined": {
+                "name": "Comparison"
+              }
+            }
+          },
+          {
+            "name": "threshold",
+            "type": {
+              "option": "i64"
+            }
+          },
+          {
+            "name": "benchmark",
+            "type": {
+              "option": "i64"
+            }
+          },
+          {
+            "name": "opens_at",
+            "type": "i64"
+          },
+          {
+            "name": "locks_at",
+            "type": "i64"
+          },
+          {
+            "name": "status",
+            "type": {
+              "defined": {
+                "name": "QuestionStatus"
+              }
+            }
+          },
+          {
+            "name": "result",
+            "type": {
+              "option": {
+                "defined": {
+                  "name": "QuestionResult"
+                }
+              }
+            }
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "QuestionResult",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "Yes"
+          },
+          {
+            "name": "No"
+          },
+          {
+            "name": "Higher"
+          },
+          {
+            "name": "Lower"
+          },
+          {
+            "name": "Push"
+          }
+        ]
+      }
+    },
+    {
+      "name": "QuestionStatus",
+      "type": {
+        "kind": "enum",
+        "variants": [
+          {
+            "name": "Open"
+          },
+          {
+            "name": "Settled"
+          },
+          {
+            "name": "Void"
+          }
+        ]
+      }
+    }
+  ]
+}

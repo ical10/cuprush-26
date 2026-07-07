@@ -10,9 +10,9 @@ export { createSolanaChainAdapter } from "./solana";
 export type ChainEnv = SolanaChainEnv & { CHAIN_MODE?: string };
 
 /**
- * CHAIN_MODE=solana selects the (HITL skeleton) mainnet adapter; anything
- * else gets the in-memory stub, which is the default for local dev and
- * every test.
+ * CHAIN_MODE=solana selects the real devnet adapter (the production chain
+ * path — devnet-only product decision); anything else gets the in-memory
+ * stub, which is the default for local dev and every test.
  */
 export function createChainAdapterFromEnv(
   env: ChainEnv = process.env,
