@@ -8,7 +8,15 @@ import {
   TransactionMessage,
   VersionedTransaction,
 } from "@solana/web3.js";
-import { BN, BorshCoder, utils, type Idl } from "@coral-xyz/anchor";
+// @coral-xyz/anchor ships as CJS. Node's native ESM loader statically
+// analyzes CJS named exports via cjs-module-lexer and fails to detect BN
+// here (passes under vitest/tsx's more permissive esbuild interop, which
+// is why this only breaks in production) — import the default and
+// destructure at runtime instead.
+import anchorPkg from "@coral-xyz/anchor";
+import type { BN as BNValue, Idl } from "@coral-xyz/anchor";
+const { BN, BorshCoder, utils } = anchorPkg;
+type BN = BNValue;
 import {
   ChainError,
   isChainError,
