@@ -84,7 +84,7 @@ See `.env.example` for inline docs. Only the first three are required locally.
 | `TXLINE_FIXTURES_DIR` | `src/txline/fixtures/samples` | Alternate replay fixtures directory |
 | `PRIVY_APP_ID` / `PRIVY_APP_SECRET` | — | Privy credentials (`AUTH_MODE=privy` only) |
 | `CHAIN_MODE` | stub | `solana` selects the real chain adapter |
-| `SOLANA_RPC_URL` / `HILO_PROGRAM_ID` | — | Solana adapter config (`CHAIN_MODE=solana` only) |
+| `SOLANA_RPC_URL` / `CUPRUSH_PROGRAM_ID` | — | Solana adapter config (`CHAIN_MODE=solana` only) |
 | `LLM_SELECTOR` / `OPENROUTER_API_KEY` / `OPENROUTER_MODEL` | off | Optional LLM question selector (background only) |
 
 ## Scripts
