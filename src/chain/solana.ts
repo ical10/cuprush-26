@@ -393,7 +393,13 @@ export function createSolanaChainAdapter(
         .slice(BATCH_MEMO_PREFIX.length + 1)
         .split(":");
       if (!wallet || !batchHash) continue;
-      if (deriveBatchPda(wallet) !== pda) continue;
+      // A malformed wallet string in a third-party memo must not break
+      // readback of legitimate commitments — skip it, don't throw.
+      try {
+        if (deriveBatchPda(wallet) !== pda) continue;
+      } catch {
+        continue;
+      }
       const blockTime = tx.blockTime ?? fallbackBlockTime;
       return {
         pda,
