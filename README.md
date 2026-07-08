@@ -4,6 +4,17 @@ Mobile-first fan game: predict match and stat outcomes, save the pick through
 Solana, watch the card react to live TxLINE events, climb the leaderboard.
 See `plans/PRD.md` for the full product spec.
 
+## Disclaimer
+
+CupRush 26 is an independent hackathon proof of concept. It is not affiliated
+with, endorsed by, sponsored by, or officially connected to the FIFA World Cup
+26, FIFA, or any tournament organizer. It is not an official video game or
+official tournament product.
+
+## License
+
+MIT. See `LICENSE`.
+
 ## Architecture
 
 One TypeScript package, ESM, Node 22, pnpm. A single Hono process runs the
