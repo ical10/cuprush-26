@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { MoveLeft, MoveRight } from "lucide-react";
-import { fetchQuestions, submitPredictionBatch } from "../lib/api";
+import { fetchMyPredictions, fetchQuestions, submitPredictionBatch } from "../lib/api";
 import { useAuth } from "../auth/auth-context";
 import { Button } from "@/components/ui/button";
 import type { BatchAnswer, Question } from "../lib/types";
@@ -59,11 +59,21 @@ function Deck({ onNavigateAuth }: Props) {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  // Deck = open questions the user hasn't already answered. Predictions are
+  // durable server-side, so on reload we subtract the ones this user already
+  // locked in — otherwise answered cards reappear. Guests (unauthenticated)
+  // have no predictions yet, so they see every open card.
   useEffect(() => {
-    fetchQuestions()
-      .then((data) => setQuestions(data.filter((q) => q.status === "open")))
+    const minePromise: ReturnType<typeof fetchMyPredictions> = isAuthenticated
+      ? fetchMyPredictions()
+      : Promise.resolve([]);
+    Promise.all([fetchQuestions(), minePromise])
+      .then(([data, mine]) => {
+        const answeredIds = new Set(mine.map((p) => p.questionId));
+        setQuestions(data.filter((q) => q.status === "open" && !answeredIds.has(q.id)));
+      })
       .catch(() => setError("Could not load questions right now."));
-  }, []);
+  }, [isAuthenticated]);
 
   const current = questions?.[index] ?? null;
 
