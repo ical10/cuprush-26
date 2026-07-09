@@ -81,7 +81,7 @@ export default function ProfileView({ stats, achievements, onStatsUpdate }: Prof
           </div>
 
           {/* GENERAL STATS SECTION */}
-          <div className="bg-border-main p-[1px] clip-panel mb-4 shadow-xl">
+          <div className="bg-border-main p-px clip-panel mb-4 shadow-xl">
             <div className="bg-surface clip-panel p-4">
               <h4 className="text-[10px] font-mono tracking-widest text-accent font-bold uppercase mb-3 flex items-center gap-1.5">
                 <Activity className="w-3.5 h-3.5" /> GENERAL STATS
@@ -120,13 +120,13 @@ export default function ProfileView({ stats, achievements, onStatsUpdate }: Prof
                         cx="40"
                         cy="40"
                         r="34"
-                        className="stroke-bg fill-none stroke-[6]"
+                        className="stroke-bg fill-none stroke-6"
                       />
                       <circle
                         cx="40"
                         cy="40"
                         r="34"
-                        className="stroke-live fill-none stroke-[6] transition-all"
+                        className="stroke-live fill-none stroke-6 transition-all"
                         strokeDasharray={`${2 * Math.PI * 34}`}
                         strokeDashoffset={`${2 * Math.PI * 34 * (1 - accuracy / 100)}`}
                       />
@@ -143,7 +143,7 @@ export default function ProfileView({ stats, achievements, onStatsUpdate }: Prof
           </div>
 
           {/* PLAYER ROSTER COACH SLOTS */}
-          <div className="bg-border-main p-[1px] clip-panel mb-4 shadow-xl">
+          <div className="bg-border-main p-px clip-panel mb-4 shadow-xl">
             <div className="bg-surface clip-panel p-4">
               <h4 className="text-[10px] font-mono tracking-widest text-accent font-bold uppercase mb-3 flex items-center gap-1.5">
                 <Shield className="w-3.5 h-3.5" /> ACTIVE PLAYER ROSTER
@@ -151,7 +151,7 @@ export default function ProfileView({ stats, achievements, onStatsUpdate }: Prof
 
               <div className="grid grid-cols-2 gap-3.5">
                 {/* Active GK - Coach Selvad */}
-                <div className="bg-border-main p-[1px] clip-panel w-full">
+                <div className="bg-border-main p-px clip-panel w-full">
                   <div className="p-3 bg-surface-raised clip-panel flex flex-col items-center text-center">
                     <span className="text-[9.5px] font-mono font-bold text-live uppercase tracking-widest mb-1.5">
                       Active GK
@@ -169,7 +169,7 @@ export default function ProfileView({ stats, achievements, onStatsUpdate }: Prof
                 </div>
 
                 {/* Active Player - Coach Libeig / Winger */}
-                <div className="bg-border-main p-[1px] clip-panel w-full">
+                <div className="bg-border-main p-px clip-panel w-full">
                   <div className="p-3 bg-surface-raised clip-panel flex flex-col items-center text-center">
                     <span className="text-[9.5px] font-mono font-bold text-accent uppercase tracking-widest mb-1.5">
                       Active Player
@@ -190,7 +190,7 @@ export default function ProfileView({ stats, achievements, onStatsUpdate }: Prof
           </div>
 
           {/* ACHIEVEMENTS GRID */}
-          <div className="bg-border-main p-[1px] clip-panel mb-4 shadow-xl">
+          <div className="bg-border-main p-px clip-panel mb-4 shadow-xl">
             <div className="bg-surface clip-panel p-4">
               <h4 className="text-[10px] font-mono tracking-widest text-accent font-bold uppercase mb-3 flex items-center gap-1.5">
                 <Award className="w-3.5 h-3.5" /> ACHIEVEMENTS
@@ -240,7 +240,7 @@ export default function ProfileView({ stats, achievements, onStatsUpdate }: Prof
           </div>
 
           {/* FIFA WORLD CUP DIRECTORY */}
-          <div className="bg-border-main p-[1px] clip-panel mb-4 shadow-xl">
+          <div className="bg-border-main p-px clip-panel mb-4 shadow-xl">
             <div className="bg-surface clip-panel p-4">
               <button 
                 onClick={() => setShowFifaDirectory(!showFifaDirectory)}

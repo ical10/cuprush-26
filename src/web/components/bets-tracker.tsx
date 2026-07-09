@@ -63,7 +63,7 @@ export default function BetsTracker({ bets }: BetsTrackerProps) {
             return (
               <div
                 key={bet.id}
-                className={`p-[1px] clip-panel transition-all shadow-xl ${
+                className={`p-px clip-panel transition-all shadow-xl ${
                   bet.status === "progress"
                     ? "bg-accent/40 glow-lime"
                     : bet.status === "won"
@@ -74,7 +74,7 @@ export default function BetsTracker({ bets }: BetsTrackerProps) {
                 <div className="p-4 bg-surface clip-panel flex flex-col justify-between overflow-hidden relative">
                   {/* Visual glow backdrop inside */}
                   <div
-                    className={`absolute inset-0 bg-gradient-to-br opacity-5 pointer-events-none ${
+                    className={`absolute inset-0 bg-linear-to-br opacity-5 pointer-events-none ${
                       bet.status === "progress"
                         ? "from-accent via-transparent"
                         : bet.status === "won"

@@ -358,7 +358,7 @@ export function Sandbox() {
         {/* LEFT SIDEBAR: Live Ticker & Stats */}
         <div className="col-span-3 hidden lg:flex flex-col gap-4 self-stretch justify-start">
           {/* Live Ticker Panel */}
-          <div className="bg-border-main p-[1px] clip-panel shadow-xl">
+          <div className="bg-border-main p-px clip-panel shadow-xl">
             <div className="p-4 bg-surface clip-panel">
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-xs font-bold text-accent uppercase tracking-widest font-display">
@@ -429,7 +429,7 @@ export function Sandbox() {
           </div>
 
           {/* Daily Volume Panel */}
-          <div className="bg-border-main p-[1px] clip-panel shadow-xl">
+          <div className="bg-border-main p-px clip-panel shadow-xl">
             <div className="p-4 bg-surface-raised clip-panel">
               <h3 className="text-xs font-bold text-text-dim uppercase tracking-widest mb-2 font-display">
                 Daily Volume
@@ -659,8 +659,8 @@ export function Sandbox() {
                     </h3>
 
                     {/* Pulsing Cyan Circle with checkmark */}
-                    <div className="w-16! h-16! rounded-full! bg-gradient-to-br! from-live! to-live/80! border! border-live/30! flex! items-center! justify-center! shadow-[0_0_20px_rgba(25,245,210,0.3)]! mb-6!">
-                      <CheckCircle className="w-10 h-10 text-bg stroke-[3]" />
+                    <div className="w-16! h-16! rounded-full! bg-linear-to-br! from-live! to-live/80! border! border-live/30! flex! items-center! justify-center! shadow-[0_0_20px_rgba(25,245,210,0.3)]! mb-6!">
+                      <CheckCircle className="w-10 h-10 text-bg stroke-3" />
                     </div>
 
                     {/* Match prediction details summary */}
@@ -857,7 +857,7 @@ export function Sandbox() {
         {/* RIGHT SIDEBAR: Profile & Leaderboard */}
         <div className="col-span-3 hidden lg:flex flex-col gap-4 self-stretch justify-start">
           {/* Profile Card */}
-          <div className="bg-border-main p-[1px] clip-panel shadow-xl">
+          <div className="bg-border-main p-px clip-panel shadow-xl">
             <div className="p-4 bg-surface-raised clip-panel">
               <div className="flex items-center gap-3 mb-4">
                 <PremiumAvatar avatar="🧑‍🎤" size="lg" />
@@ -911,7 +911,7 @@ export function Sandbox() {
           </div>
 
           {/* Leaderboard Top 3 Panel */}
-          <div className="bg-border-main p-[1px] clip-panel shadow-xl">
+          <div className="bg-border-main p-px clip-panel shadow-xl">
             <div className="p-4 bg-surface-raised clip-panel">
               <h3 className="text-xs font-bold text-accent uppercase tracking-widest mb-4 font-display">
                 Top Predictors
@@ -938,7 +938,7 @@ export function Sandbox() {
           </div>
 
           {/* Coaches Frame */}
-          <div className="bg-border-main p-[1px] clip-panel mt-auto shadow-xl">
+          <div className="bg-border-main p-px clip-panel mt-auto shadow-xl">
             <div className="p-4 bg-surface-raised clip-panel flex gap-4">
               <div className="flex-1 flex flex-col items-center gap-1 opacity-50">
                 <PremiumAvatar avatar="🧑‍✈️" size="md" glow={false} />

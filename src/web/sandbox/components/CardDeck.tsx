@@ -260,7 +260,7 @@ export default function CardDeck({
                       className="absolute inset-0 bg-live/90 flex flex-col items-center justify-center pointer-events-none transition-opacity z-35"
                     >
                       <div className="w-16 h-16 rounded-full bg-bg flex items-center justify-center mb-2 animate-bounce">
-                        <Check className="w-9 h-9 text-live stroke-[3]" />
+                        <Check className="w-9 h-9 text-live stroke-3" />
                       </div>
                       <span className="text-2xl font-display font-black text-bg tracking-wider">
                         AGREE
@@ -277,7 +277,7 @@ export default function CardDeck({
                       className="absolute inset-0 bg-danger/90 flex flex-col items-center justify-center pointer-events-none transition-opacity z-35"
                     >
                       <div className="w-16 h-16 rounded-full bg-bg flex items-center justify-center mb-2 animate-bounce">
-                        <X className="w-9 h-9 text-danger stroke-[3]" />
+                        <X className="w-9 h-9 text-danger stroke-3" />
                       </div>
                       <span className="text-2xl font-display font-black text-bg tracking-wider">
                         SKIP
