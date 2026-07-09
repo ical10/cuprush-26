@@ -12,3 +12,5 @@ SPEC.md
 tasks/
 .mcp.json
 .txline-devnet-key.json
+
+plans/
