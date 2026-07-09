@@ -577,7 +577,7 @@ function AppShell() {
                   <div
                     className={`p-3! bg-surface! clip-panel! flex! items-start! space-x-2.5! text-xs! font-semibold! backdrop-blur-md! transition-all! ${toast.type === "success" ? "text-live!" : toast.type === "error" ? "text-danger!" : "text-accent!"}`}
                   >
-                    <span className="text-sm! font-semibold">
+                    <span className="text-lg! font-bold!">
                       {toast.type === "success"
                         ? "🏆"
                         : toast.type === "error"

@@ -136,7 +136,7 @@ export function Sandbox() {
               if (bet.prediction === "draw" && finalScoreA === finalScoreB)
                 isWin = true;
 
-               const payout = isWin ? Math.floor(bet.amount * bet.odds) : 0;
+              const payout = isWin ? Math.floor(bet.amount * bet.odds) : 0;
               const nextStatus: "won" | "lost" = isWin ? "won" : "lost";
 
               // Notify the user via styled toast
@@ -508,7 +508,7 @@ export function Sandbox() {
               {toasts.map((toast) => (
                 <div
                   key={toast.id}
-                  className="bg-border-main p-px clip-panel shadow-2xl w-full"
+                  className="bg-border-main p-px  clip-panel shadow-2xl w-full"
                 >
                   <div
                     className={`p-3 bg-surface clip-panel flex items-start space-x-2.5 text-xs font-semibold backdrop-blur-md transition-all ${
