@@ -1,11 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import {
-  Settings,
-  ClipboardList,
-  CheckCircle,
-  X,
-  Plus,
-} from "lucide-react";
+import { Settings, ClipboardList, CheckCircle, X, Plus } from "lucide-react";
 
 import { AuthProvider, useAuth } from "./auth/auth-context";
 import { AuthScreen } from "./components/auth-screen";
@@ -72,7 +66,9 @@ function AppShell() {
     }
   });
   useEffect(() => {
-    try { localStorage.setItem("cuprush:gold", gold.toString()); } catch {}
+    try {
+      localStorage.setItem("cuprush:gold", gold.toString());
+    } catch {}
   }, [gold]);
 
   const [stats, setStats] = useState<any>(() => {
@@ -84,7 +80,9 @@ function AppShell() {
     }
   });
   useEffect(() => {
-    try { localStorage.setItem("cuprush:stats", JSON.stringify(stats)); } catch {}
+    try {
+      localStorage.setItem("cuprush:stats", JSON.stringify(stats));
+    } catch {}
   }, [stats]);
 
   const [bets, setBets] = useState<any[]>(() => {
@@ -96,7 +94,9 @@ function AppShell() {
     }
   });
   useEffect(() => {
-    try { localStorage.setItem("cuprush:bets", JSON.stringify(bets)); } catch {}
+    try {
+      localStorage.setItem("cuprush:bets", JSON.stringify(bets));
+    } catch {}
   }, [bets]);
 
   const [achievements, setAchievements] = useState<any[]>(() => {
@@ -108,12 +108,19 @@ function AppShell() {
     }
   });
   useEffect(() => {
-    try { localStorage.setItem("cuprush:achievements", JSON.stringify(achievements)); } catch {}
+    try {
+      localStorage.setItem(
+        "cuprush:achievements",
+        JSON.stringify(achievements),
+      );
+    } catch {}
   }, [achievements]);
 
   /* ===================== Production Batch Predictions ===================== */
   const [answers, setAnswers] = useState<BatchAnswer[]>([]);
-  const [submitState, setSubmitState] = useState<"idle" | "submitting" | "done" | "failed">("idle");
+  const [submitState, setSubmitState] = useState<
+    "idle" | "submitting" | "done" | "failed"
+  >("idle");
   const [submitError, setSubmitError] = useState<string | null>(null);
 
   /* ===================== Game UI Triggers ===================== */
@@ -132,7 +139,9 @@ function AppShell() {
   /* ===================== Production sidebar data ===================== */
   const [me, setMe] = useState<any | null>(null);
   const [leaderboardRows, setLeaderboardRows] = useState<any[]>([]);
-  const [liveViewMode, setLiveViewMode] = useState<"simulated" | "onchain">("simulated");
+  const [liveViewMode, setLiveViewMode] = useState<"simulated" | "onchain">(
+    "simulated",
+  );
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -210,9 +219,12 @@ function AppShell() {
               const finalScoreB = nextScoreB;
 
               let isWin = false;
-              if (bet.prediction === "teamA" && finalScoreA > finalScoreB) isWin = true;
-              if (bet.prediction === "teamB" && finalScoreB > finalScoreA) isWin = true;
-              if (bet.prediction === "draw" && finalScoreA === finalScoreB) isWin = true;
+              if (bet.prediction === "teamA" && finalScoreA > finalScoreB)
+                isWin = true;
+              if (bet.prediction === "teamB" && finalScoreB > finalScoreA)
+                isWin = true;
+              if (bet.prediction === "draw" && finalScoreA === finalScoreB)
+                isWin = true;
 
               const payout = isWin ? Math.floor(bet.amount * bet.odds) : 0;
               const nextStatus = isWin ? "won" : "lost";
@@ -227,15 +239,31 @@ function AppShell() {
               setTimeout(() => {
                 setGold((currentGold) => {
                   const finalGold = currentGold + payout;
-                  updateAchievementsAndStats(isWin, payout, bet.amount, finalGold);
+                  updateAchievementsAndStats(
+                    isWin,
+                    payout,
+                    bet.amount,
+                    finalGold,
+                  );
                   return finalGold;
                 });
               }, 0);
 
-              return { ...bet, minute: 90, scoreA: finalScoreA, scoreB: finalScoreB, status: nextStatus };
+              return {
+                ...bet,
+                minute: 90,
+                scoreA: finalScoreA,
+                scoreB: finalScoreB,
+                status: nextStatus,
+              };
             }
 
-            return { ...bet, minute: nextMinute, scoreA: nextScoreA, scoreB: nextScoreB };
+            return {
+              ...bet,
+              minute: nextMinute,
+              scoreA: nextScoreA,
+              scoreB: nextScoreB,
+            };
           }
           return bet;
         });
@@ -246,7 +274,12 @@ function AppShell() {
     return () => clearInterval(interval);
   }, [tickerSpeed]);
 
-  const updateAchievementsAndStats = (isWin: boolean, payout: number, stake: number, nextGold: number) => {
+  const updateAchievementsAndStats = (
+    isWin: boolean,
+    payout: number,
+    stake: number,
+    nextGold: number,
+  ) => {
     setStats((prev: any) => {
       const nextWins = isWin ? prev.wins + 1 : prev.wins;
       const nextLosses = !isWin ? prev.losses + 1 : prev.losses;
@@ -261,22 +294,36 @@ function AppShell() {
       if (nextXp >= maxXP) {
         nextXp -= maxXP;
         if (prev.level === "SILVER II") nextLevel = "SILVER I";
-        else if (prev.level === "SILVER I") { nextLevel = "GOLD III"; maxXP = 3000; }
-        else nextLevel = "GOLD II";
+        else if (prev.level === "SILVER I") {
+          nextLevel = "GOLD III";
+          maxXP = 3000;
+        } else nextLevel = "GOLD II";
         addToast(`🎉 PROMOTED! You leveled up to ${nextLevel}!`, "success");
       }
 
-      return { ...prev, totalBetsPlaced: nextBetsPlaced, wins: nextWins, losses: nextLosses, streak: nextStreak, xp: nextXp, xpMax: maxXP, level: nextLevel, gold: nextGold };
+      return {
+        ...prev,
+        totalBetsPlaced: nextBetsPlaced,
+        wins: nextWins,
+        losses: nextLosses,
+        streak: nextStreak,
+        xp: nextXp,
+        xpMax: maxXP,
+        level: nextLevel,
+        gold: nextGold,
+      };
     });
 
     setAchievements((prev) =>
       prev.map((ach) => {
         if (ach.id === "a2" && isWin && stake >= 500) {
-          if (!ach.unlocked) addToast(`🏅 Achievement unlocked: ${ach.title}!`, "success");
+          if (!ach.unlocked)
+            addToast(`🏅 Achievement unlocked: ${ach.title}!`, "success");
           return { ...ach, unlocked: true };
         }
         if (ach.id === "a4" && nextGold >= 21000) {
-          if (!ach.unlocked) addToast(`🏅 Achievement unlocked: ${ach.title}!`, "success");
+          if (!ach.unlocked)
+            addToast(`🏅 Achievement unlocked: ${ach.title}!`, "success");
           return { ...ach, unlocked: true };
         }
         return ach;
@@ -299,15 +346,22 @@ function AppShell() {
 
     const homeTeam = question.fixture.homeTeam;
     const awayTeam = question.fixture.awayTeam;
-    const predictionLabel = outcome === "yes" || outcome === "higher" ? "Agree / Yes" : "Disagree / No";
+    const predictionLabel =
+      outcome === "yes" || outcome === "higher"
+        ? "Agree / Yes"
+        : "Disagree / No";
 
     const newBet = {
       id: `b_${Date.now()}_${question.id}`,
       matchId: question.fixture.id,
       teamA: homeTeam,
       teamB: awayTeam,
-      flagA: FIFA_TEAMS.find((t) => t.name.toLowerCase() === homeTeam.toLowerCase())?.flag || "⚽",
-      flagB: FIFA_TEAMS.find((t) => t.name.toLowerCase() === awayTeam.toLowerCase())?.flag || "⚽",
+      flagA:
+        FIFA_TEAMS.find((t) => t.name.toLowerCase() === homeTeam.toLowerCase())
+          ?.flag || "⚽",
+      flagB:
+        FIFA_TEAMS.find((t) => t.name.toLowerCase() === awayTeam.toLowerCase())
+          ?.flag || "⚽",
       prediction: outcome === "yes" || outcome === "higher" ? "teamA" : "teamB",
       predictionLabel,
       amount: betCost,
@@ -321,12 +375,23 @@ function AppShell() {
     };
 
     setBets((prev) => [newBet, ...prev]);
-    setConfirmedBet({ fixtureName: `${homeTeam} vs ${awayTeam}`, predictionLabel, betAmount: betCost });
-    setStats((prev: any) => ({ ...prev, totalBetsPlaced: prev.totalBetsPlaced + 1, gold: nextGold }));
+    setConfirmedBet({
+      fixtureName: `${homeTeam} vs ${awayTeam}`,
+      predictionLabel,
+      betAmount: betCost,
+    });
+    setStats((prev: any) => ({
+      ...prev,
+      totalBetsPlaced: prev.totalBetsPlaced + 1,
+      gold: nextGold,
+    }));
   };
 
   const handleSkipMatch = (question: Question) => {
-    addToast(`⏩ Skipped question for: ${question.fixture.homeTeam} vs ${question.fixture.awayTeam}`, "info");
+    addToast(
+      `⏩ Skipped question for: ${question.fixture.homeTeam} vs ${question.fixture.awayTeam}`,
+      "info",
+    );
   };
 
   const handleClaimFreeGold = () => {
@@ -381,32 +446,53 @@ function AppShell() {
 
       {/* 12-Column Responsive Grid */}
       <div className="grid grid-cols-12 gap-6 w-full max-w-7xl items-center justify-center relative z-10 p-0 sm:p-4 lg:p-0">
-
         {/* ======== LEFT SIDEBAR: Live Ticker & Volume ======== */}
         <div className="col-span-3 hidden lg:flex flex-col gap-4 self-stretch justify-start">
           {/* Live Ticker Panel */}
           <div className="bg-border p-[1px] clip-panel shadow-xl">
             <div className="p-4 bg-surface clip-panel">
               <div className="flex items-center justify-between mb-3">
-                <h3 className="text-xs font-bold text-accent uppercase tracking-widest font-display">Live Ticker</h3>
+                <h3 className="text-xs font-bold text-accent uppercase tracking-widest font-display">
+                  Live Ticker
+                </h3>
                 <span className="w-1.5 h-1.5 rounded-full bg-live animate-ping" />
               </div>
               <div className="space-y-3 font-sans text-xs">
                 {bets.filter((b) => b.status === "progress").length > 0 ? (
-                  bets.filter((b) => b.status === "progress").slice(0, 2).map((bet) => (
-                    <div key={bet.id} className="flex flex-col border-l-2 border-accent pl-3 py-1">
-                      <span className="text-[10px] text-text-dim">{bet.minute}' — Prediction Live</span>
-                      <span className="text-xs font-medium uppercase truncate text-text">{bet.teamA} {bet.scoreA} - {bet.scoreB} {bet.teamB}</span>
-                      <span className="text-[10px] text-accent font-mono truncate">{bet.predictionLabel}</span>
-                    </div>
-                  ))
+                  bets
+                    .filter((b) => b.status === "progress")
+                    .slice(0, 2)
+                    .map((bet) => (
+                      <div
+                        key={bet.id}
+                        className="flex flex-col border-l-2 border-accent pl-3 py-1"
+                      >
+                        <span className="text-[10px] text-text-dim">
+                          {bet.minute}' — Prediction Live
+                        </span>
+                        <span className="text-xs font-medium uppercase truncate text-text">
+                          {bet.teamA} {bet.scoreA} - {bet.scoreB} {bet.teamB}
+                        </span>
+                        <span className="text-[10px] text-accent font-mono truncate">
+                          {bet.predictionLabel}
+                        </span>
+                      </div>
+                    ))
                 ) : (
-                  <p className="text-[10px] text-text-dim italic">No simulated matches running. Swipe right to start!</p>
+                  <p className="text-[10px] text-text-dim italic">
+                    No simulated matches running. Swipe right to start!
+                  </p>
                 )}
                 <div className="flex flex-col border-l-2 border-live pl-3 py-1">
-                  <span className="text-[10px] text-text-dim">88' — World Cup Group E</span>
-                  <span className="text-xs font-medium uppercase text-text text-left">Spain 2 - 1 Germany</span>
-                  <span className="text-[10px] text-live">Goal: Álvaro Morata</span>
+                  <span className="text-[10px] text-text-dim">
+                    88' — World Cup Group E
+                  </span>
+                  <span className="text-xs font-medium uppercase text-text text-left">
+                    Spain 2 - 1 Germany
+                  </span>
+                  <span className="text-[10px] text-live">
+                    Goal: Álvaro Morata
+                  </span>
                 </div>
               </div>
             </div>
@@ -415,12 +501,18 @@ function AppShell() {
           {/* Daily Volume Panel */}
           <div className="bg-border p-[1px] clip-panel shadow-xl">
             <div className="p-4 bg-surface-raised clip-panel">
-              <h3 className="text-xs font-bold text-text-dim uppercase tracking-widest mb-2 font-display">Daily Volume</h3>
-              <div className="text-2xl font-bold font-mono text-text">14.2M <span className="text-accent">G</span></div>
+              <h3 className="text-xs font-bold text-text-dim uppercase tracking-widest mb-2 font-display">
+                Daily Volume
+              </h3>
+              <div className="text-2xl font-bold font-mono text-text">
+                14.2M <span className="text-accent">G</span>
+              </div>
               <div className="w-full bg-surface h-1 mt-3 rounded-full overflow-hidden">
                 <div className="bg-accent h-full w-3/4"></div>
               </div>
-              <p className="text-[10px] text-text-dim mt-2 font-sans">24,102 Active predictors right now</p>
+              <p className="text-[10px] text-text-dim mt-2 font-sans">
+                24,102 Active predictors right now
+              </p>
             </div>
           </div>
         </div>
@@ -428,13 +520,16 @@ function AppShell() {
         {/* ======== CENTER: THE PHONE FRAME ======== */}
         <div className="col-span-12 lg:col-span-6 flex justify-center items-center">
           <div className="w-full max-w-[420px] h-screen sm:h-[840px] bg-bg rounded-none sm:rounded-[3.5rem] border-0 sm:border-8 border-surface-raised shadow-[0_25px_60px_rgba(0,0,0,0.85)] relative flex flex-col overflow-hidden">
-
             {/* iOS-style top notch */}
             <div className="hidden lg:flex absolute top-0 inset-x-0 h-6 bg-bg z-50 justify-between items-center px-6 pointer-events-none">
-              <span className="text-[10px] font-mono text-text-dim font-bold">{currentTime}</span>
+              <span className="text-[10px] font-mono text-text-dim font-bold">
+                {currentTime}
+              </span>
               <div className="w-24 h-4 bg-surface rounded-b-xl border-x border-b border-border/80 mx-auto" />
               <div className="flex items-center space-x-1">
-                <span className="text-[9px] font-mono text-text-dim font-bold">5G</span>
+                <span className="text-[9px] font-mono text-text-dim font-bold">
+                  5G
+                </span>
                 <div className="w-4 h-2 bg-text-dim rounded-sm relative flex items-center p-[0.5px]">
                   <div className="h-full w-4/5 bg-bg rounded-xs" />
                 </div>
@@ -449,32 +544,59 @@ function AppShell() {
               </div>
               <div className="flex items-center space-x-2">
                 <div className="flex items-center space-x-1.5 bg-surface/90 border border-border p-1.5 pl-2.5 pr-2.5 rounded-full shadow-[0_0_10px_rgba(215,255,63,0.15)] glow-lime">
-                  <span className="text-accent font-mono text-xs font-black animate-pulse">🪙</span>
-                  <span className="text-xs font-mono font-black text-text">{gold.toLocaleString()}G</span>
-                  <button onClick={handleClaimFreeGold} title="Claim Free Gold" className="w-4 h-4 bg-live text-bg rounded-full flex items-center justify-center font-bold text-[10px] hover:bg-live/80 cursor-pointer ml-1 transform active:scale-95 transition-all">
+                  <span className="text-accent font-mono text-xs font-black animate-pulse">
+                    🪙
+                  </span>
+                  <span className="text-xs font-mono font-black text-text">
+                    {gold.toLocaleString()}G
+                  </span>
+                  <button
+                    onClick={handleClaimFreeGold}
+                    title="Claim Free Gold"
+                    className="w-4 h-4 bg-live text-bg rounded-full flex items-center justify-center font-bold text-[10px] hover:bg-live/80 cursor-pointer ml-1 transform active:scale-95 transition-all"
+                  >
                     <Plus className="w-3 h-3 stroke-3" />
                   </button>
                 </div>
-                <button onClick={() => setShowSettings(true)} className="p-1.5 bg-surface/85 hover:bg-surface-raised border border-border rounded-xl transition text-text-dim hover:text-text cursor-pointer active:scale-95">
+                <button
+                  onClick={() => setShowSettings(true)}
+                  className="p-1.5 bg-surface/85 hover:bg-surface-raised border border-border rounded-xl transition text-text-dim hover:text-text cursor-pointer active:scale-95"
+                >
                   <Settings className="w-4 h-4" />
                 </button>
               </div>
             </header>
 
             {/* TOAST SYSTEM */}
-            <div className="absolute top-24 inset-x-4 z-50 flex flex-col space-y-2 pointer-events-none">
+            <div className="absolute! top-24! inset-x-4! z-50! flex! flex-col! space-y-2! pointer-events-none!">
               {toasts.map((toast) => (
-                <div key={toast.id} className="bg-border p-px clip-panel shadow-2xl w-full">
-                  <div className={`p-3 bg-surface clip-panel flex items-start space-x-2.5 text-xs font-semibold backdrop-blur-md transition-all ${toast.type === "success" ? "text-live" : toast.type === "error" ? "text-danger" : "text-accent"}`}>
-                    <span className="text-sm">{toast.type === "success" ? "🏆" : toast.type === "error" ? "❌" : "⚽"}</span>
-                    <p className="flex-1 text-[11px] leading-tight font-sans text-text">{toast.message}</p>
+                <div
+                  key={toast.id}
+                  className="bg-border! p-px! clip-panel! shadow-2xl! w-full!"
+                >
+                  <div
+                    className={`p-3! bg-surface! clip-panel! flex! items-start! space-x-2.5! text-xs! font-semibold! backdrop-blur-md! transition-all! ${toast.type === "success" ? "text-live!" : toast.type === "error" ? "text-danger!" : "text-accent!"}`}
+                  >
+                    <span className="text-sm! font-semibold">
+                      {toast.type === "success"
+                        ? "🏆"
+                        : toast.type === "error"
+                          ? "❌"
+                          : "⚽"}
+                    </span>
+                    <p className="flex-1! text-[11px]! leading-tight! font-sans! text-text!">
+                      {toast.message}
+                    </p>
                   </div>
                 </div>
               ))}
             </div>
 
             {/* MAIN CONTENT VIEW */}
-            <main className="flex-1 flex flex-col px-4 pt-20 relative z-20 overflow-hidden min-h-0 bg-cover bg-center bg-no-repeat" style={{ backgroundImage: `url(${backgroundPhone})` }}>
+            <main
+              className="flex-1 flex flex-col px-4 pt-20 relative z-20 overflow-hidden min-h-0 bg-cover bg-center bg-no-repeat"
+              style={{ backgroundImage: `url(${backgroundPhone})` }}
+            >
               {screen === "deck" && (
                 <CardDeck
                   key={deckResetKey}
@@ -492,10 +614,16 @@ function AppShell() {
               {screen === "live" && (
                 <div className="flex flex-col flex-1 w-full h-full text-text select-none min-h-0">
                   <div className="grid grid-cols-2 bg-surface-raised border border-border p-1 clip-control mb-3 shadow-inner">
-                    <button onClick={() => setLiveViewMode("simulated")} className={`py-1.5 text-center font-display font-black text-[10px] uppercase tracking-wider clip-control transition-all ${liveViewMode === "simulated" ? "bg-accent text-bg" : "text-text-dim hover:text-text"}`}>
+                    <button
+                      onClick={() => setLiveViewMode("simulated")}
+                      className={`py-1.5 text-center font-display font-black text-[10px] uppercase tracking-wider clip-control transition-all ${liveViewMode === "simulated" ? "bg-accent text-bg" : "text-text-dim hover:text-text"}`}
+                    >
                       🏆 Simulated Tickers
                     </button>
-                    <button onClick={() => setLiveViewMode("onchain")} className={`py-1.5 text-center font-display font-black text-[10px] uppercase tracking-wider clip-control transition-all ${liveViewMode === "onchain" ? "bg-accent text-bg" : "text-text-dim hover:text-text"}`}>
+                    <button
+                      onClick={() => setLiveViewMode("onchain")}
+                      className={`py-1.5 text-center font-display font-black text-[10px] uppercase tracking-wider clip-control transition-all ${liveViewMode === "onchain" ? "bg-accent text-bg" : "text-text-dim hover:text-text"}`}
+                    >
                       ⛓️ Solana Picks
                     </button>
                   </div>
@@ -503,20 +631,37 @@ function AppShell() {
                     {liveViewMode === "simulated" ? (
                       <BetsTracker bets={bets} />
                     ) : (
-                      <div className="h-full overflow-y-auto scrollbar-none pb-6"><LiveScreen /></div>
+                      <div className="h-full overflow-y-auto scrollbar-none pb-6">
+                        <LiveScreen />
+                      </div>
                     )}
                   </div>
                 </div>
               )}
 
-              {screen === "result" && <div className="flex-1 overflow-y-auto scrollbar-none pb-6 min-h-0"><ResultScreen /></div>}
-              {screen === "leaderboard" && <div className="flex-1 overflow-y-auto scrollbar-none pb-6 min-h-0"><LeaderboardScreen /></div>}
-              {screen === "profile" && <div className="flex-1 overflow-y-auto scrollbar-none pb-6 min-h-0"><ProfileScreen /></div>}
+              {screen === "result" && (
+                <div className="flex-1 overflow-y-auto scrollbar-none pb-6 min-h-0">
+                  <ResultScreen />
+                </div>
+              )}
+              {screen === "leaderboard" && (
+                <div className="flex-1 overflow-y-auto scrollbar-none pb-6 min-h-0">
+                  <LeaderboardScreen />
+                </div>
+              )}
+              {screen === "profile" && (
+                <div className="flex-1 overflow-y-auto scrollbar-none pb-6 min-h-0">
+                  <ProfileScreen />
+                </div>
+              )}
               {screen === "auth" && <AuthScreen onDone={handleAuthDone} />}
             </main>
 
             {/* BOTTOM NAV BAR */}
-            <NavBar current={screen === "auth" ? "deck" : screen} onNavigate={navigate} />
+            <NavBar
+              current={screen === "auth" ? "deck" : screen}
+              onNavigate={navigate}
+            />
 
             {/* BET CONFIRMED MODAL */}
             {confirmedBet && (
@@ -524,32 +669,72 @@ function AppShell() {
                 <div className="bg-border p-[2px] clip-panel shadow-2xl w-full max-w-[340px]">
                   <div className="bg-surface clip-panel p-6 relative overflow-hidden flex flex-col items-center text-center">
                     <div className="absolute inset-x-0 top-0 h-32 bg-radial from-accent/10 to-transparent pointer-events-none" />
-                    <h3 className="text-xl font-display font-black text-accent tracking-wider uppercase mb-5">BET CONFIRMED!</h3>
+                    <h3 className="text-xl font-display font-black text-accent tracking-wider uppercase mb-5">
+                      BET CONFIRMED!
+                    </h3>
                     <div className="w-14 h-14 rounded-full bg-gradient-to-br from-live to-live/80 border border-live/30 flex items-center justify-center shadow-[0_0_20px_rgba(25,245,210,0.3)] mb-6">
                       <CheckCircle className="w-8 h-8 text-bg stroke-[3]" />
                     </div>
                     <div className="bg-bg border border-border p-4 rounded-xl w-full text-xs font-mono space-y-3 mb-6 text-left">
                       <div className="flex items-start space-x-2">
                         <span className="text-base leading-none">🏟️</span>
-                        <div><span className="text-text-dim block text-[9px] leading-none">MATCH</span><span className="text-text font-bold block mt-0.5 uppercase truncate">{confirmedBet.fixtureName}</span></div>
+                        <div>
+                          <span className="text-text-dim block text-[9px] leading-none">
+                            MATCH
+                          </span>
+                          <span className="text-text font-bold block mt-0.5 uppercase truncate">
+                            {confirmedBet.fixtureName}
+                          </span>
+                        </div>
                       </div>
                       <div className="flex items-start space-x-2">
                         <span className="text-base leading-none">🎯</span>
-                        <div><span className="text-text-dim block text-[9px] leading-none">PREDICTION</span><span className="text-accent font-extrabold block mt-0.5 uppercase">{confirmedBet.predictionLabel}</span></div>
+                        <div>
+                          <span className="text-text-dim block text-[9px] leading-none">
+                            PREDICTION
+                          </span>
+                          <span className="text-accent font-extrabold block mt-0.5 uppercase">
+                            {confirmedBet.predictionLabel}
+                          </span>
+                        </div>
                       </div>
                       <div className="flex items-start space-x-2">
                         <span className="text-base leading-none">🪙</span>
-                        <div><span className="text-text-dim block text-[9px] leading-none">CASUAL STAKE PLACED</span><span className="text-text font-black block mt-0.5">{confirmedBet.betAmount} Gold Coins</span></div>
+                        <div>
+                          <span className="text-text-dim block text-[9px] leading-none">
+                            CASUAL STAKE PLACED
+                          </span>
+                          <span className="text-text font-black block mt-0.5">
+                            {confirmedBet.betAmount} Gold Coins
+                          </span>
+                        </div>
                       </div>
                     </div>
                     <div className="text-[10px] font-mono text-text-dim leading-tight mb-6">
-                      📢 You and <strong className="text-live font-bold">14,249 other players</strong> predicted this exact outcome!
+                      📢 You and{" "}
+                      <strong className="text-live font-bold">
+                        14,249 other players
+                      </strong>{" "}
+                      predicted this exact outcome!
                     </div>
                     <div className="flex flex-col space-y-2.5 w-full">
-                      <button onClick={() => { setConfirmedBet(null); setLiveViewMode("simulated"); navigate("live"); }} className="w-full py-3 bg-accent hover:bg-accent/90 text-bg font-display font-black text-xs clip-control flex items-center justify-center space-x-1.5 transition transform active:scale-95 cursor-pointer">
-                        <ClipboardList className="w-4 h-4 text-bg" /><span className="uppercase tracking-widest text-[10px]">VIEW MY BETS</span>
+                      <button
+                        onClick={() => {
+                          setConfirmedBet(null);
+                          setLiveViewMode("simulated");
+                          navigate("live");
+                        }}
+                        className="w-full py-3 bg-accent hover:bg-accent/90 text-bg font-display font-black text-xs clip-control flex items-center justify-center space-x-1.5 transition transform active:scale-95 cursor-pointer"
+                      >
+                        <ClipboardList className="w-4 h-4 text-bg" />
+                        <span className="uppercase tracking-widest text-[10px]">
+                          VIEW MY BETS
+                        </span>
                       </button>
-                      <button onClick={() => setConfirmedBet(null)} className="w-full py-3 bg-surface-raised hover:bg-surface-raised/80 text-text font-display font-bold text-xs clip-control border border-border flex items-center justify-center space-x-1.5 transition transform active:scale-95 cursor-pointer">
+                      <button
+                        onClick={() => setConfirmedBet(null)}
+                        className="w-full py-3 bg-surface-raised hover:bg-surface-raised/80 text-text font-display font-bold text-xs clip-control border border-border flex items-center justify-center space-x-1.5 transition transform active:scale-95 cursor-pointer"
+                      >
                         <span>CONTINUE PICKING</span>
                       </button>
                     </div>
@@ -563,33 +748,88 @@ function AppShell() {
               <div className="absolute inset-0 bg-bg/95 flex items-center justify-center p-5 z-50">
                 <div className="bg-border p-[2px] clip-panel shadow-2xl w-full max-w-[340px]">
                   <div className="bg-surface clip-panel p-5 relative">
-                    <button onClick={() => setShowSettings(false)} className="absolute top-4 right-4 p-1 bg-bg hover:bg-surface-raised border border-border rounded-full text-text-dim hover:text cursor-pointer">
+                    <button
+                      onClick={() => setShowSettings(false)}
+                      className="absolute top-4 right-4 p-1 bg-bg hover:bg-surface-raised border border-border rounded-full text-text-dim hover:text cursor-pointer"
+                    >
                       <X className="w-4 h-4" />
                     </button>
-                    <h3 className="text-sm font-display font-black text-accent uppercase tracking-widest mb-4">🔧 DEV PROTOTYPE SETTINGS</h3>
+                    <h3 className="text-sm font-display font-black text-accent uppercase tracking-widest mb-4">
+                      🔧 DEV PROTOTYPE SETTINGS
+                    </h3>
                     <div className="space-y-4 text-xs font-mono">
-                      <p className="text-[10px] text-text-dim leading-relaxed">Adjust ticker speeds to simulate match resolutions instantly for grading and playtesting!</p>
+                      <p className="text-[10px] text-text-dim leading-relaxed">
+                        Adjust ticker speeds to simulate match resolutions
+                        instantly for grading and playtesting!
+                      </p>
                       <div className="space-y-2">
-                        <span className="text-[10px] text-text-dim font-bold block">LIVE TICKER SPEED:</span>
+                        <span className="text-[10px] text-text-dim font-bold block">
+                          LIVE TICKER SPEED:
+                        </span>
                         <div className="grid grid-cols-2 gap-2">
-                          <button onClick={() => { setTickerSpeed(5000); addToast("Speed set to Normal Ticks", "info"); }} className={`py-1.5 px-2 clip-control text-[10px] font-bold border transition ${tickerSpeed === 5000 ? "bg-accent text-bg border-accent font-black" : "bg-bg border-border text-text-dim hover:bg-surface-raised"}`}>NORMAL (5s / tick)</button>
-                          <button onClick={() => { setTickerSpeed(2500); addToast("HYPER speed enabled!", "success"); }} className={`py-1.5 px-2 clip-control text-[10px] font-bold border transition ${tickerSpeed === 2500 ? "bg-accent text-bg border-accent font-black" : "bg-bg border-border text-text-dim hover:bg-surface-raised"}`}>⚡ HYPER (2.5s / tick)</button>
+                          <button
+                            onClick={() => {
+                              setTickerSpeed(5000);
+                              addToast("Speed set to Normal Ticks", "info");
+                            }}
+                            className={`py-1.5 px-2 clip-control text-[10px] font-bold border transition ${tickerSpeed === 5000 ? "bg-accent text-bg border-accent font-black" : "bg-bg border-border text-text-dim hover:bg-surface-raised"}`}
+                          >
+                            NORMAL (5s / tick)
+                          </button>
+                          <button
+                            onClick={() => {
+                              setTickerSpeed(2500);
+                              addToast("HYPER speed enabled!", "success");
+                            }}
+                            className={`py-1.5 px-2 clip-control text-[10px] font-bold border transition ${tickerSpeed === 2500 ? "bg-accent text-bg border-accent font-black" : "bg-bg border-border text-text-dim hover:bg-surface-raised"}`}
+                          >
+                            ⚡ HYPER (2.5s / tick)
+                          </button>
                         </div>
                       </div>
                       <div className="pt-2 border-t border-border/50 space-y-2">
-                        <span className="text-[10px] text-text-dim font-bold block">VIRTUAL GOLD ASSIST:</span>
-                        <button onClick={() => { setGold(35000); addToast("Balance recharged to 35,000 G!", "success"); }} className="w-full py-2 bg-live hover:bg-live/90 text-bg font-display font-black rounded-lg clip-control border border-live/50 flex items-center justify-center space-x-1 cursor-pointer">
+                        <span className="text-[10px] text-text-dim font-bold block">
+                          VIRTUAL GOLD ASSIST:
+                        </span>
+                        <button
+                          onClick={() => {
+                            setGold(35000);
+                            addToast(
+                              "Balance recharged to 35,000 G!",
+                              "success",
+                            );
+                          }}
+                          className="w-full py-2 bg-live hover:bg-live/90 text-bg font-display font-black rounded-lg clip-control border border-live/50 flex items-center justify-center space-x-1 cursor-pointer"
+                        >
                           <span>🪙 RECHARGE BALANCE TO 35,000G</span>
                         </button>
                       </div>
                       <div className="pt-2 border-t border-border/50 space-y-2">
-                        <span className="text-[10px] text-text-dim font-bold block">SIMULATOR STATE:</span>
-                        <button onClick={() => { setBets(PRE_SEED_BETS); setGold(INITIAL_PLAYER_STATS.gold); setStats({ ...INITIAL_PLAYER_STATS }); setDeckResetKey((prev) => prev + 1); handleResetAnswers(); setShowSettings(false); addToast("Game Simulator Reset successfully!", "info"); }} className="w-full py-2 bg-surface-raised hover:bg-surface-raised/85 text-danger font-display font-black clip-control border border-danger/40 text-center cursor-pointer">
+                        <span className="text-[10px] text-text-dim font-bold block">
+                          SIMULATOR STATE:
+                        </span>
+                        <button
+                          onClick={() => {
+                            setBets(PRE_SEED_BETS);
+                            setGold(INITIAL_PLAYER_STATS.gold);
+                            setStats({ ...INITIAL_PLAYER_STATS });
+                            setDeckResetKey((prev) => prev + 1);
+                            handleResetAnswers();
+                            setShowSettings(false);
+                            addToast(
+                              "Game Simulator Reset successfully!",
+                              "info",
+                            );
+                          }}
+                          className="w-full py-2 bg-surface-raised hover:bg-surface-raised/85 text-danger font-display font-black clip-control border border-danger/40 text-center cursor-pointer"
+                        >
                           🔄 FULL RESET TO DEFAULTS
                         </button>
                       </div>
                       <div className="pt-3 border-t border-border/50 text-center">
-                        <span className="text-[8.5px] text-text-dim">CUPRUSH // 26 • V1.0.0 PROTOTYPE</span>
+                        <span className="text-[8.5px] text-text-dim">
+                          CUPRUSH // 26 • V1.0.0 PROTOTYPE
+                        </span>
                       </div>
                     </div>
                   </div>
@@ -607,26 +847,49 @@ function AppShell() {
               <div className="flex items-center gap-3 mb-4">
                 <PremiumAvatar avatar="🧑‍🎤" size="lg" />
                 <div>
-                  <div className="text-xs font-bold text-text font-display uppercase truncate max-w-[150px]">{stats.username}</div>
-                  <div className="text-[10px] text-accent font-mono">Lvl {stats.level} • Specialist</div>
+                  <div className="text-xs font-bold text-text font-display uppercase truncate max-w-[150px]">
+                    {stats.username}
+                  </div>
+                  <div className="text-[10px] text-accent font-mono">
+                    Lvl {stats.level} • Specialist
+                  </div>
                 </div>
               </div>
               <div className="space-y-2">
                 <div className="flex justify-between text-[10px] uppercase font-bold text-text-dim">
-                  <span>XP Progress</span><span>{stats.xp} / {stats.xpMax}</span>
+                  <span>XP Progress</span>
+                  <span>
+                    {stats.xp} / {stats.xpMax}
+                  </span>
                 </div>
                 <div className="w-full h-1.5 bg-surface rounded-full overflow-hidden">
-                  <div className="h-full bg-accent transition-all duration-300" style={{ width: `${(stats.xp / stats.xpMax) * 100}%` }}></div>
+                  <div
+                    className="h-full bg-accent transition-all duration-300"
+                    style={{ width: `${(stats.xp / stats.xpMax) * 100}%` }}
+                  ></div>
                 </div>
               </div>
               <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
                 <div className="p-2 bg-surface/50 border border-border rounded-lg flex flex-col items-center">
-                  <span className="text-[10px] text-text-dim uppercase">Win Rate</span>
-                  <span className="text-xs font-bold text-live font-mono">{stats.totalBetsPlaced > 0 ? Math.round((stats.wins / (stats.wins + stats.losses || 1)) * 100) : 57}%</span>
+                  <span className="text-[10px] text-text-dim uppercase">
+                    Win Rate
+                  </span>
+                  <span className="text-xs font-bold text-live font-mono">
+                    {stats.totalBetsPlaced > 0
+                      ? Math.round(
+                          (stats.wins / (stats.wins + stats.losses || 1)) * 100,
+                        )
+                      : 57}
+                    %
+                  </span>
                 </div>
                 <div className="p-2 bg-surface/50 border border-border rounded-lg flex flex-col items-center">
-                  <span className="text-[10px] text-text-dim uppercase">Streak</span>
-                  <span className="text-xs font-bold text-accent font-mono">🔥 {stats.streak}</span>
+                  <span className="text-[10px] text-text-dim uppercase">
+                    Streak
+                  </span>
+                  <span className="text-xs font-bold text-accent font-mono">
+                    🔥 {stats.streak}
+                  </span>
                 </div>
               </div>
             </div>
@@ -635,27 +898,50 @@ function AppShell() {
           {/* Top 3 Predictors */}
           <div className="bg-border p-[1px] clip-panel shadow-xl">
             <div className="p-4 bg-surface-raised clip-panel">
-              <h3 className="text-xs font-bold text-accent uppercase tracking-widest mb-4 font-display">Top Predictors</h3>
+              <h3 className="text-xs font-bold text-accent uppercase tracking-widest mb-4 font-display">
+                Top Predictors
+              </h3>
               <div className="space-y-3 font-sans">
                 {leaderboardRows.length > 0 ? (
                   leaderboardRows.map((entry, idx) => (
-                    <div key={idx} className="flex items-center gap-3 p-2 bg-surface/40 border border-border rounded-lg">
-                      <div className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black italic bg-surface-raised text-text border border-border">{idx + 1}</div>
-                      <span className="text-xs font-medium truncate text-text font-sans">{entry.displayName || "Anonymous"}</span>
-                      <span className="ml-auto font-mono text-[10px] font-bold text-accent">{entry.points} pts</span>
+                    <div
+                      key={idx}
+                      className="flex items-center gap-3 p-2 bg-surface/40 border border-border rounded-lg"
+                    >
+                      <div className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black italic bg-surface-raised text-text border border-border">
+                        {idx + 1}
+                      </div>
+                      <span className="text-xs font-medium truncate text-text font-sans">
+                        {entry.displayName || "Anonymous"}
+                      </span>
+                      <span className="ml-auto font-mono text-[10px] font-bold text-accent">
+                        {entry.points} pts
+                      </span>
                     </div>
                   ))
                 ) : (
                   <div className="space-y-3">
                     <div className="flex items-center gap-3 p-2 bg-surface/40 border border-border rounded-lg">
-                      <div className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black italic bg-surface-raised text-text border border-border">1</div>
-                      <span className="text-xs font-medium truncate text-text font-sans">Alex_LOCKED</span>
-                      <span className="ml-auto font-mono text-[10px] font-bold text-accent">25 pts</span>
+                      <div className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black italic bg-surface-raised text-text border border-border">
+                        1
+                      </div>
+                      <span className="text-xs font-medium truncate text-text font-sans">
+                        Alex_LOCKED
+                      </span>
+                      <span className="ml-auto font-mono text-[10px] font-bold text-accent">
+                        25 pts
+                      </span>
                     </div>
                     <div className="flex items-center gap-3 p-2 bg-surface/40 border border-border rounded-lg">
-                      <div className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black italic bg-surface-raised text-text border border-border">2</div>
-                      <span className="text-xs font-medium truncate text-text font-sans">Fanatic_9</span>
-                      <span className="ml-auto font-mono text-[10px] font-bold text-accent">18 pts</span>
+                      <div className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black italic bg-surface-raised text-text border border-border">
+                        2
+                      </div>
+                      <span className="text-xs font-medium truncate text-text font-sans">
+                        Fanatic_9
+                      </span>
+                      <span className="ml-auto font-mono text-[10px] font-bold text-accent">
+                        18 pts
+                      </span>
                     </div>
                   </div>
                 )}
@@ -668,16 +954,19 @@ function AppShell() {
             <div className="p-4 bg-surface-raised clip-panel flex gap-4">
               <div className="flex-1 flex flex-col items-center gap-1 opacity-50">
                 <PremiumAvatar avatar="gk" size="md" glow={false} />
-                <span className="text-[8px] font-bold uppercase text-text-dim mt-1">Selvad (GK)</span>
+                <span className="text-[8px] font-bold uppercase text-text-dim mt-1">
+                  Selvad (GK)
+                </span>
               </div>
               <div className="flex-1 flex flex-col items-center gap-1 border-b-2 border-accent pb-1">
                 <PremiumAvatar avatar="player" size="md" glow={false} />
-                <span className="text-[8px] font-bold uppercase text-accent mt-1">Libeig (ST)</span>
+                <span className="text-[8px] font-bold uppercase text-accent mt-1">
+                  Libeig (ST)
+                </span>
               </div>
             </div>
           </div>
         </div>
-
       </div>
     </div>
   );

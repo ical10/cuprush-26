@@ -60,75 +60,75 @@
 
 /* ===== FootbalGame Typography Scale Utilities (DESIGN.md § 03) ===== */
 @utility font-display-xl {
-  font-family: var(--font-display);
-  font-size: 56px;
-  line-height: 52px;
-  font-weight: 800;
-  letter-spacing: -0.01em;
+  font-family: var(--font-display) !important;
+  font-size: 56px !important;
+  line-height: 52px !important;
+  font-weight: 800 !important;
+  letter-spacing: -0.01em !important;
 }
 
 @utility font-display-l {
-  font-family: var(--font-display);
-  font-size: 40px;
-  line-height: 40px;
-  font-weight: 800;
+  font-family: var(--font-display) !important;
+  font-size: 40px !important;
+  line-height: 40px !important;
+  font-weight: 800 !important;
 }
 
 @utility font-screen-title {
-  font-family: var(--font-display);
-  font-size: 30px;
-  line-height: 32px;
-  font-weight: 800;
+  font-family: var(--font-display) !important;
+  font-size: 30px !important;
+  line-height: 32px !important;
+  font-weight: 800 !important;
 }
 
 @utility font-card-question {
-  font-family: var(--font-display);
-  font-size: 26px;
-  line-height: 30px;
-  font-weight: 700;
+  font-family: var(--font-display) !important;
+  font-size: 26px !important;
+  line-height: 30px !important;
+  font-weight: 700 !important;
 }
 
 @utility font-score {
-  font-family: var(--font-display);
-  font-size: 36px;
-  line-height: 36px;
-  font-weight: 800;
-  font-variant-numeric: tabular-nums;
+  font-family: var(--font-display) !important;
+  font-size: 36px !important;
+  line-height: 36px !important;
+  font-weight: 800 !important;
+  font-variant-numeric: tabular-nums !important;
 }
 
 @utility font-body-custom {
-  font-family: var(--font-sans);
-  font-size: 16px;
-  line-height: 24px;
-  font-weight: 500;
+  font-family: var(--font-sans) !important;
+  font-size: 16px !important;
+  line-height: 24px !important;
+  font-weight: 500 !important;
 }
 
 @utility font-label-custom {
-  font-family: var(--font-sans);
-  font-size: 14px;
-  line-height: 18px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
+  font-family: var(--font-sans) !important;
+  font-size: 14px !important;
+  line-height: 18px !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.04em !important;
 }
 
 @utility font-meta-custom {
-  font-family: var(--font-sans);
-  font-size: 12px;
-  line-height: 16px;
-  font-weight: 600;
+  font-family: var(--font-sans) !important;
+  font-size: 12px !important;
+  line-height: 16px !important;
+  font-weight: 600 !important;
 }
 
 /* ===== FootbalGame Animation Utilities ===== */
 @utility animate-float {
-  animation: float 4s ease-in-out infinite;
+  animation: float 4s ease-in-out infinite !important;
 }
 
 @utility glow-cyan {
-  animation: pulse-cyan 3s ease-in-out infinite;
+  animation: pulse-cyan 3s ease-in-out infinite !important;
 }
 
 @utility glow-lime {
-  animation: pulse-lime 3s ease-in-out infinite;
+  animation: pulse-lime 3s ease-in-out infinite !important;
 }
 
 /* CupRush 26 core palette — see DESIGN.md § 02 Colors (dark-only). */
@@ -1295,29 +1295,29 @@ button {
 
 /* Scrollbar hiding for overflow containers */
 .scrollbar-none {
-  -ms-overflow-style: none;
-  scrollbar-width: none;
+  -ms-overflow-style: none !important;
+  scrollbar-width: none !important;
 }
 .scrollbar-none::-webkit-scrollbar {
-  display: none;
+  display: none !important;
 }
 
 /* Diagonal rush-line pattern for empty space backgrounds (max 8% opacity) */
 .bg-rush-lines {
-  background-image: repeating-linear-gradient(45deg, rgba(49, 83, 67, 0.08) 0, rgba(49, 83, 67, 0.08) 1px, transparent 0, transparent 8px);
+  background-image: repeating-linear-gradient(45deg, rgba(49, 83, 67, 0.08) 0, rgba(49, 83, 67, 0.08) 1px, transparent 0, transparent 8px) !important;
 }
 
 /* Signature Clipped Corners — brand toolkit angular cuts. */
 .clip-control {
-  clip-path: polygon(0 0, calc(100% - 8px) 0, 100% 8px, 100% 100%, 0 100%);
+  clip-path: polygon(0 0, calc(100% - 8px) 0, 100% 8px, 100% 100%, 0 100%) !important;
 }
 
 .clip-panel {
-  clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 0 100%);
+  clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 0 100%) !important;
 }
 
 .clip-hero {
-  clip-path: polygon(0 0, calc(100% - 20px) 0, 100% 20px, 100% 100%, 0 100%);
+  clip-path: polygon(0 0, calc(100% - 20px) 0, 100% 20px, 100% 100%, 0 100%) !important;
 }
 
 /* ===== FootbalGame Keyframes ===== */

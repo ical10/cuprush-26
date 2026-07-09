@@ -648,55 +648,55 @@ export function Sandbox() {
 
             {/* OVERLAY: "BET CONFIRMED!" MODAL (Triggered immediately after Agree Swipe) */}
             {confirmedBet && (
-              <div className="absolute inset-0 bg-bg/90 flex items-center justify-center p-6 z-50 animate-fade-in backdrop-blur-xs">
-                <div className="bg-border-main p-[2px] clip-panel shadow-2xl w-full max-w-[340px]">
-                  <div className="bg-surface clip-panel p-6 relative overflow-hidden flex flex-col items-center text-center">
+              <div className="absolute! inset-0! bg-bg/90! flex! items-center! justify-center! p-6! z-50! animate-fade-in! backdrop-blur-xs!">
+                <div className="bg-border-main! p-[2px]! clip-panel! shadow-2xl! w-full! max-w-[340px]!">
+                  <div className="bg-surface! clip-panel! p-6! relative! overflow-hidden! flex! flex-col! items-center! text-center!">
                     {/* Accent Ambient Radial behind checkmark */}
-                    <div className="absolute inset-x-0 top-0 h-32 bg-radial from-accent/10 to-transparent pointer-events-none" />
+                    <div className="absolute! inset-x-0! top-0! h-32! bg-radial! from-accent/10! to-transparent! pointer-events-none!" />
 
-                    <h3 className="text-xl font-display font-black text-accent tracking-wider uppercase mb-5">
+                    <h3 className="text-xl! font-display! font-black! text-accent! tracking-wider! uppercase! mb-5!">
                       BET CONFIRMED!
                     </h3>
 
                     {/* Pulsing Cyan Circle with checkmark */}
-                    <div className="w-16 h-16 rounded-full bg-gradient-to-br from-live to-live/80 border border-live/30 flex items-center justify-center shadow-[0_0_20px_rgba(25,245,210,0.3)] mb-6">
+                    <div className="w-16! h-16! rounded-full! bg-gradient-to-br! from-live! to-live/80! border! border-live/30! flex! items-center! justify-center! shadow-[0_0_20px_rgba(25,245,210,0.3)]! mb-6!">
                       <CheckCircle className="w-10 h-10 text-bg stroke-[3]" />
                     </div>
 
                     {/* Match prediction details summary */}
-                    <div className="bg-bg border border-border-main p-4 rounded-xl w-full text-xs font-mono space-y-3 mb-6 text-left">
-                      <div className="flex items-start space-x-2">
-                        <span className="text-base leading-none">🏟️</span>
+                    <div className="bg-bg! border! border-border-main! p-4! rounded-xl! w-full! text-xs! font-mono! space-y-3! mb-6! text-left!">
+                      <div className="flex! items-start! space-x-2!">
+                        <span className="text-base! leading-none!">🏟️</span>
                         <div>
-                          <span className="text-text-dim block text-[9px] leading-none">
+                          <span className="text-text-dim! block! text-[9px]! leading-none!">
                             MATCH
                           </span>
-                          <span className="text-text-main font-bold block mt-0.5 uppercase truncate">
+                          <span className="text-text-main! font-bold! block! mt-0.5! uppercase! truncate!">
                             {confirmedBet.match.teamA} vs{" "}
                             {confirmedBet.match.teamB}
                           </span>
                         </div>
                       </div>
 
-                      <div className="flex items-start space-x-2">
-                        <span className="text-base leading-none">🎯</span>
+                      <div className="flex! items-start! space-x-2!">
+                        <span className="text-base! leading-none!">🎯</span>
                         <div>
-                          <span className="text-text-dim block text-[9px] leading-none">
+                          <span className="text-text-dim! block! text-[9px]! leading-none!">
                             PREDICTION
                           </span>
-                          <span className="text-accent font-extrabold block mt-0.5 uppercase">
+                          <span className="text-accent! font-extrabold! block! mt-0.5! uppercase!">
                             {confirmedBet.predictionLabel}
                           </span>
                         </div>
                       </div>
 
-                      <div className="flex items-start space-x-2">
-                        <span className="text-base leading-none">🪙</span>
+                      <div className="flex! items-start! space-x-2!">
+                        <span className="text-base! leading-none!">🪙</span>
                         <div>
-                          <span className="text-text-dim block text-[9px] leading-none">
+                          <span className="text-text-dim! block! text-[9px]! leading-none!">
                             CASUAL STAKE PLACED
                           </span>
-                          <span className="text-text-main font-black block mt-0.5">
+                          <span className="text-text-main! font-black! block! mt-0.5!">
                             {confirmedBet.betAmount} Gold Coins
                           </span>
                         </div>
@@ -704,23 +704,23 @@ export function Sandbox() {
                     </div>
 
                     {/* Micro Social Proof feedback */}
-                    <div className="text-[10px] font-mono text-text-dim leading-tight mb-6">
+                    <div className="text-[10px]! font-mono! text-text-dim! leading-tight! mb-6!">
                       📢 You and{" "}
-                      <strong className="text-live font-bold">
+                      <strong className="text-live! font-bold!">
                         14,249 other players
                       </strong>{" "}
                       predicted this exact outcome!
                     </div>
 
                     {/* Buttons paths: View my bets & Continue Picking */}
-                    <div className="flex flex-col space-y-2.5 w-full">
+                    <div className="flex! flex-col! space-y-2.5! w-full!">
                       {/* View My Bets */}
                       <button
                         onClick={() => {
                           setActiveTab("bets");
                           setConfirmedBet(null);
                         }}
-                        className="w-full py-3 bg-accent hover:bg-accent/90 text-bg font-display font-black text-xs clip-control flex items-center justify-center space-x-1.5 transition transform active:scale-95 cursor-pointer"
+                        className="w-full! py-3! bg-accent! hover:bg-accent/90! text-bg! font-display! font-black! text-xs! clip-control! flex! items-center! justify-center! space-x-1.5! transition! transform! active:scale-95! cursor-pointer!"
                       >
                         <ClipboardList className="w-4 h-4 text-bg" />
                         <span className="uppercase tracking-widest text-[10px]">
@@ -731,7 +731,7 @@ export function Sandbox() {
                       {/* Continue Picking */}
                       <button
                         onClick={() => setConfirmedBet(null)}
-                        className="w-full py-3 bg-surface-raised hover:bg-surface-raised/80 text-text-main font-display font-bold text-xs clip-control border border-border-main flex items-center justify-center space-x-1.5 transition transform active:scale-95 cursor-pointer"
+                        className="w-full! py-3! bg-surface-raised! hover:bg-surface-raised/80! text-text-main! font-display! font-bold! text-xs! clip-control! border! border-border-main! flex! items-center! justify-center! space-x-1.5! transition! transform! active:scale-95! cursor-pointer!"
                       >
                         <span>CONTINUE PICKING</span>
                       </button>
@@ -744,40 +744,40 @@ export function Sandbox() {
             {/* SETTINGS AND TESTING DIALOG MODAL */}
             {showSettings && (
               <div className="absolute inset-0 bg-bg/95 flex items-center justify-center p-5 z-50">
-                <div className="bg-border-main p-[2px] clip-panel shadow-2xl w-full max-w-[340px]">
-                  <div className="bg-surface clip-panel p-5 relative">
+                <div className="bg-border-main! p-[2px]! clip-panel! shadow-2xl! w-full! max-w-[340px]!">
+                  <div className="bg-surface! clip-panel! p-5! relative!">
                     <button
                       onClick={() => setShowSettings(false)}
-                      className="absolute top-4 right-4 p-1 bg-bg hover:bg-surface-raised border border-border-main rounded-full text-text-dim hover:text-text-main"
+                      className="absolute! top-4! right-4! p-1! bg-bg! hover:bg-surface-raised! border! border-border-main! rounded-full! text-text-dim! hover:text-text-main!"
                     >
                       <X className="w-4 h-4" />
                     </button>
 
-                    <h3 className="text-sm font-display font-black text-accent uppercase tracking-widest mb-4">
+                    <h3 className="text-sm! font-display! font-black! text-accent! uppercase! tracking-widest! mb-4!">
                       🔧 DEV PROTOTYPE SETTINGS
                     </h3>
 
-                    <div className="space-y-4 text-xs font-mono">
-                      <p className="text-[10px] text-text-dim leading-relaxed">
+                    <div className="space-y-4! text-xs! font-mono!">
+                      <p className="text-[10px]! text-text-dim! leading-relaxed!">
                         Adjust ticker speeds to simulate match resolutions
                         instantly for grading and playtesting!
                       </p>
 
                       {/* Speed adjustment */}
-                      <div className="space-y-2">
-                        <span className="text-[10px] text-text-dim font-bold block">
+                      <div className="space-y-2!">
+                        <span className="text-[10px]! text-text-dim! font-bold! block!">
                           LIVE TICKER SPEED:
                         </span>
-                        <div className="grid grid-cols-2 gap-2">
+                        <div className="grid! grid-cols-2! gap-2!">
                           <button
                             onClick={() => {
                               setTickerSpeed(5000);
                               addToast("Speed set to Normal Ticks", "info");
                             }}
-                            className={`py-1.5 px-2 clip-control text-[10px] font-bold border transition ${
+                            className={`py-1.5! px-2! clip-control! text-[10px]! font-bold! border! transition! ${
                               tickerSpeed === 5000
-                                ? "bg-accent text-bg border-accent font-black"
-                                : "bg-bg border-border-main text-text-dim hover:bg-surface-raised"
+                                ? "bg-accent! text-bg! border-accent! font-black!"
+                                : "bg-bg! border-border-main! text-text-dim! hover:bg-surface-raised!"
                             }`}
                           >
                             NORMAL (5s / tick)
@@ -787,10 +787,10 @@ export function Sandbox() {
                               setTickerSpeed(2500);
                               addToast("HYPER speed enabled!", "success");
                             }}
-                            className={`py-1.5 px-2 clip-control text-[10px] font-bold border transition ${
+                            className={`py-1.5! px-2! clip-control! text-[10px]! font-bold! border! transition! ${
                               tickerSpeed === 2500
-                                ? "bg-accent text-bg border-accent font-black"
-                                : "bg-bg border-border-main text-text-dim hover:bg-surface-raised"
+                                ? "bg-accent! text-bg! border-accent! font-black!"
+                                : "bg-bg! border-border-main! text-text-dim! hover:bg-surface-raised!"
                             }`}
                           >
                             ⚡ HYPER (2.5s / tick)
@@ -799,8 +799,8 @@ export function Sandbox() {
                       </div>
 
                       {/* Virtual Recharge Action */}
-                      <div className="pt-2 border-t border-border-main/50 space-y-2">
-                        <span className="text-[10px] text-text-dim font-bold block">
+                      <div className="pt-2! border-t! border-border-main/50! space-y-2!">
+                        <span className="text-[10px]! text-text-dim! font-bold! block!">
                           VIRTUAL GOLD ASSIST:
                         </span>
                         <button
@@ -811,15 +811,15 @@ export function Sandbox() {
                               "success",
                             );
                           }}
-                          className="w-full py-2 bg-live hover:bg-live/90 text-bg font-display font-black rounded-lg clip-control border border-live/50 flex items-center justify-center space-x-1 cursor-pointer"
+                          className="w-full! py-2! bg-live! hover:bg-live/90! text-bg! font-display! font-black! rounded-lg! clip-control! border! border-live/50! flex! items-center! justify-center! space-x-1! cursor-pointer!"
                         >
                           <span>🪙 RECHARGE BALANCE TO 35,000G</span>
                         </button>
                       </div>
 
                       {/* Reset entire simulator */}
-                      <div className="pt-2 border-t border-border-main/50 space-y-2">
-                        <span className="text-[10px] text-text-dim font-bold block">
+                      <div className="pt-2! border-t! border-border-main/50! space-y-2!">
+                        <span className="text-[10px]! text-text-dim! font-bold! block!">
                           SIMULATOR STATE:
                         </span>
                         <button
@@ -835,14 +835,14 @@ export function Sandbox() {
                               "info",
                             );
                           }}
-                          className="w-full py-2 bg-surface-raised hover:bg-surface-raised/85 text-danger font-display font-black clip-control border border-danger/40 text-center cursor-pointer"
+                          className="w-full! py-2! bg-surface-raised! hover:bg-surface-raised/85! text-danger! font-display! font-black! clip-control! border! border-danger/40! text-center! cursor-pointer!"
                         >
                           🔄 FULL RESET TO DEFAULTS
                         </button>
                       </div>
 
-                      <div className="pt-3 border-t border-border-main/50 text-center">
-                        <span className="text-[8.5px] text-text-dim">
+                      <div className="pt-3! border-t! border-border-main/50! text-center!">
+                        <span className="text-[8.5px]! text-text-dim!">
                           CUPRUSH // 26 • V1.0.0 PROTOTYPE
                         </span>
                       </div>

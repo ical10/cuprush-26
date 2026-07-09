@@ -365,7 +365,7 @@ export default function CardDeck({
           {/* Disagree / Skip button */}
           <button
             onClick={handleDisagreeClick}
-            className="flex-1 py-3 px-4 bg-surface-raised hover:bg-surface-raised/80 hover:text-danger hover:border-danger/50 text-text-main font-display font-black text-xs clip-control border border-border-main flex items-center justify-center space-x-2 transition transform active:scale-95 cursor-pointer"
+            className="flex-1! py-3! px-4! bg-surface-raised! hover:bg-surface-raised/80! hover:text-danger! hover:border-danger/50! text-text-main! font-display! font-black! text-xs! clip-control! border! border-border-main! flex! items-center! justify-center! space-x-2! transition! transform! active:scale-95! cursor-pointer!"
           >
             <ThumbsDown className="w-4 h-4 stroke-[2.5]" />
             <span className="uppercase tracking-widest text-[11px]">NO</span>
@@ -374,7 +374,7 @@ export default function CardDeck({
           {/* Agree / Swipes button */}
           <button
             onClick={handleAgreeClick}
-            className="flex-1 py-3 px-4 bg-surface-raised hover:bg-surface-raised/80 hover:text-live hover:border-live/50 text-text-main font-display font-black text-xs clip-control border border-border-main flex items-center justify-center space-x-2 transition transform active:scale-95 cursor-pointer"
+            className="flex-1! py-3! px-4! bg-surface-raised! hover:bg-surface-raised/80! hover:text-live! hover:border-live/50! text-text-main! font-display! font-black! text-xs! clip-control! border! border-border-main! flex! items-center! justify-center! space-x-2! transition! transform! active:scale-95! cursor-pointer!"
           >
             <ThumbsUp className="w-4 h-4 stroke-[2.5]" />
             <span className="uppercase tracking-widest text-[11px]">YES</span>

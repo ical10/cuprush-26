@@ -68,7 +68,7 @@ export default function BetsTracker({ bets }: BetsTrackerProps) {
                     ? "bg-accent/40 glow-lime"
                     : bet.status === "won"
                       ? "bg-live/40"
-                      : "bg-border-main/20 opacity-65"
+                      : "bg-border-main/20 "
                 }`}
               >
                 <div className="p-4 bg-surface clip-panel flex flex-col justify-between overflow-hidden relative">
