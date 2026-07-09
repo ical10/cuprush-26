@@ -200,13 +200,29 @@ export function createQuestionScheduler(options: SchedulerOptions): QuestionSche
     }
   }
 
+  // Background ticks and fixture-update handlers are fire-and-forget. A
+  // throw inside one (e.g. a transient DB connect timeout) would surface as
+  // an unhandled promise rejection and crash the whole process — which is
+  // exactly how a momentary Postgres blip left production dead for two days.
+  // Swallow-and-log instead; the next interval retries.
+  async function runGuarded(what: string, fn: () => Promise<unknown>): Promise<void> {
+    try {
+      await fn();
+    } catch (error) {
+      console.error(`Scheduler ${what} failed; continuing`, error);
+    }
+  }
+
   return {
     start() {
       unsubscribe = onFixtureUpdate((update) => {
-        void handleFixtureUpdate(update);
+        void runGuarded("fixture-update handler", () => handleFixtureUpdate(update));
       });
-      void tick();
-      timer = setInterval(() => void tick(), options.intervalMs ?? DEFAULT_TICK_INTERVAL_MS);
+      void runGuarded("tick", tick);
+      timer = setInterval(
+        () => void runGuarded("tick", tick),
+        options.intervalMs ?? DEFAULT_TICK_INTERVAL_MS,
+      );
     },
     stop() {
       if (timer) clearInterval(timer);

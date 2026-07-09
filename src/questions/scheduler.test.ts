@@ -1,5 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import type { Database } from "../db/client";
 import {
+  createQuestionScheduler,
   fixtureEventTransition,
   isSettlingOverdue,
   timeDrivenTransition,
@@ -104,5 +106,38 @@ describe("isSettlingOverdue", () => {
   it("stays overdue well past the deadline", () => {
     const wayLater = new Date(settlingAt.getTime() + 60 * 60 * 1000);
     expect(isSettlingOverdue(settlingAt, wayLater)).toBe(true);
+  });
+});
+
+describe("scheduler tick crash guard", () => {
+  // Every query on this db rejects — simulates a Postgres connect timeout.
+  function makeRejectingDb(): Database {
+    const proxy: unknown = new Proxy(function () {}, {
+      get(_t, prop) {
+        if (prop === "then") return (_res: unknown, rej: (e: Error) => void) => rej(new Error("DB down"));
+        return () => proxy;
+      },
+      apply() {
+        return proxy;
+      },
+    });
+    return proxy as Database;
+  }
+
+  it("does not throw or leak an unhandled rejection when a tick's DB query fails", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const scheduler = createQuestionScheduler({ db: makeRejectingDb(), intervalMs: 10_000 });
+
+    // Without the guard, the fire-and-forget tick() rejection surfaces as an
+    // unhandled rejection and vitest fails the test.
+    expect(() => scheduler.start()).not.toThrow();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    scheduler.stop();
+
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining("Scheduler tick failed"),
+      expect.any(Error),
+    );
+    errorSpy.mockRestore();
   });
 });
