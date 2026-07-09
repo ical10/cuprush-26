@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { AuthProvider } from "./auth/auth-context";
+import { AuthProvider, authMode } from "./auth/auth-context";
+import { PrivyAuthProvider } from "./auth/privy-provider";
 import { AuthScreen } from "./components/auth-screen";
 import { CardDeck } from "./components/card-deck";
 import { LeaderboardScreen } from "./components/leaderboard-screen";
@@ -71,9 +72,11 @@ function AppShell() {
 }
 
 export function App() {
+  // Privy owns the session in privy mode; dev mode keeps the localStorage stub.
+  const Provider = authMode() === "privy" ? PrivyAuthProvider : AuthProvider;
   return (
-    <AuthProvider>
+    <Provider>
       <AppShell />
-    </AuthProvider>
+    </Provider>
   );
 }

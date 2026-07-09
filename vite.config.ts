@@ -17,6 +17,22 @@ export default defineConfig({
   build: {
     outDir: "../../dist/client",
     emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        // Privy (+ its wallet stack) is large and changes rarely — split it out
+        // so it caches separately and doesn't bloat the app chunk on every deploy.
+        manualChunks(id: string) {
+          if (
+            id.includes("@privy-io") ||
+            id.includes("@reown") ||
+            id.includes("walletconnect") ||
+            id.includes("@solana")
+          ) {
+            return "privy";
+          }
+        },
+      },
+    },
   },
   server: {
     proxy: {
@@ -31,6 +47,8 @@ export default defineConfig({
     tailwindcss(),
     VitePWA({
       registerType: "autoUpdate",
+      // The Privy chunk exceeds Workbox's 2 MiB default; allow precaching it.
+      workbox: { maximumFileSizeToCacheInBytes: 4 * 1024 * 1024 },
       includeAssets: ["favicon.svg", "og.jpg"],
       manifest: {
         name: "CupRush 26",
