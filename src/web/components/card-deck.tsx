@@ -10,11 +10,19 @@ import { TxStatus } from "./tx-status";
 import { capitalizeOutcome } from "../lib/outcome-labels";
 import stadiumBg from "../assets/stadium-bg.jpg";
 
-type Props = {
+export type Props = {
   onNavigateAuth(after: () => void): void;
+  /* Optional external state management for gamified simulator integration.
+     When provided, the component delegates answer tracking and submission
+     to the parent (App.tsx) instead of managing its own local state. */
+  answers?: BatchAnswer[];
+  onBetPlaced?: (question: Question, outcome: string) => void;
+  onSkip?: (question: Question) => void;
+  submitState?: "idle" | "submitting" | "done" | "failed";
+  submitError?: string | null;
+  onSubmit?: () => void | Promise<void>;
+  onResetAnswers?: () => void;
 };
-
-type SubmitState = "idle" | "submitting" | "done" | "failed";
 
 /* Night-stadium photo behind the deck only (brand toolkit phone mock). A
    fixed layer under the shell content; the CSS scrim keeps header, nav, and
@@ -46,18 +54,35 @@ export function CardDeck(props: Props) {
   );
 }
 
-function Deck({ onNavigateAuth }: Props) {
+type SubmitState = "idle" | "submitting" | "done" | "failed";
+
+function Deck({
+  onNavigateAuth,
+  answers: externalAnswers,
+  onBetPlaced,
+  onSkip,
+  submitState: externalSubmitState,
+  submitError: externalSubmitError,
+  onSubmit: externalOnSubmit,
+  onResetAnswers,
+}: Props) {
+  const hasExternalState = externalAnswers !== undefined;
   const { isAuthenticated } = useAuth();
   const [questions, setQuestions] = useState<Question[] | null>(null);
   const [index, setIndex] = useState(0);
   // Answers accumulate locally per swipe — nothing hits the network until the
   // whole deck is submitted as one batch. A refresh before submit discards
   // them (accepted tradeoff); a submitted batch is durable.
-  const [answers, setAnswers] = useState<BatchAnswer[]>([]);
+  const [localAnswers, setLocalAnswers] = useState<BatchAnswer[]>([]);
   const [pendingOutcome, setPendingOutcome] = useState<string | null>(null);
-  const [submitState, setSubmitState] = useState<SubmitState>("idle");
-  const [submitError, setSubmitError] = useState<string | null>(null);
+  const [localSubmitState, setLocalSubmitState] = useState<SubmitState>("idle");
+  const [localSubmitError, setLocalSubmitError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // Use external state if provided, otherwise fall back to local
+  const answers = hasExternalState ? externalAnswers : localAnswers;
+  const submitState = hasExternalState && externalSubmitState ? externalSubmitState : localSubmitState;
+  const submitError = hasExternalState ? (externalSubmitError ?? null) : localSubmitError;
 
   useEffect(() => {
     fetchQuestions()
@@ -68,7 +93,11 @@ function Deck({ onNavigateAuth }: Props) {
   const current = questions?.[index] ?? null;
 
   function record(question: Question, outcome: string) {
-    setAnswers((prev) => [...prev, { questionId: question.id, outcome }]);
+    if (hasExternalState && onBetPlaced) {
+      onBetPlaced(question, outcome);
+    } else {
+      setLocalAnswers((prev) => [...prev, { questionId: question.id, outcome }]);
+    }
     setIndex((i) => i + 1);
   }
 
@@ -94,14 +123,18 @@ function Deck({ onNavigateAuth }: Props) {
   }
 
   async function submit() {
-    setSubmitState("submitting");
+    if (hasExternalState && externalOnSubmit) {
+      await externalOnSubmit();
+      return;
+    }
+    setLocalSubmitState("submitting");
     try {
-      await submitPredictionBatch(answers);
-      setSubmitState("done");
-      setSubmitError(null);
+      await submitPredictionBatch(localAnswers);
+      setLocalSubmitState("done");
+      setLocalSubmitError(null);
     } catch (err) {
-      setSubmitError(err instanceof Error ? err.message : "Submit failed.");
-      setSubmitState("failed");
+      setLocalSubmitError(err instanceof Error ? err.message : "Submit failed.");
+      setLocalSubmitState("failed");
     }
   }
 

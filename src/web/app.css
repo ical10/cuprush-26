@@ -1,3 +1,4 @@
+@import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@700;800&family=Manrope:wght@400;500;600;700;800&display=swap');
 @import "tailwindcss";
 @import "tw-animate-css";
 
@@ -6,8 +7,13 @@
  * exact names) to shadcn/Tailwind's expected --color-* theme tokens. Never
  * redeclare --accent/--border/etc under a second :root block — that would
  * silently overwrite the values every existing plain-CSS rule reads.
+ *
+ * FootbalGame-compatible tokens (text-main, text-dim, border-main, surface,
+ * surface-raised, bg, accent, live, danger, warning) are also mapped here
+ * so that inline Tailwind classes from the prototype work unchanged.
  */
 @theme inline {
+  /* shadcn/Radix-compatible semantic tokens */
   --color-background: var(--bg);
   --color-foreground: var(--text);
   --color-card: var(--surface);
@@ -31,6 +37,98 @@
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) + 4px);
+
+  /* FootbalGame-compatible brand palette tokens.
+     These map to the same :root CSS variables, allowing inline Tailwind
+     classes like `text-text-main`, `bg-surface`, `border-border-main` etc.
+     to resolve correctly — essential for ported components. */
+  --font-sans: "Manrope", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-display: "Barlow Condensed", "Arial Narrow", sans-serif;
+  --font-mono: "Manrope", monospace;
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-raised: var(--surface-raised);
+  --color-text-main: var(--text);
+  --color-text: var(--text);
+  --color-text-dim: var(--text-dim);
+  --color-accent: var(--accent);
+  --color-live: var(--live);
+  --color-danger: var(--danger);
+  --color-warning: var(--warning);
+  --color-border-main: var(--border);
+}
+
+/* ===== FootbalGame Typography Scale Utilities (DESIGN.md § 03) ===== */
+@utility font-display-xl {
+  font-family: var(--font-display);
+  font-size: 56px;
+  line-height: 52px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+
+@utility font-display-l {
+  font-family: var(--font-display);
+  font-size: 40px;
+  line-height: 40px;
+  font-weight: 800;
+}
+
+@utility font-screen-title {
+  font-family: var(--font-display);
+  font-size: 30px;
+  line-height: 32px;
+  font-weight: 800;
+}
+
+@utility font-card-question {
+  font-family: var(--font-display);
+  font-size: 26px;
+  line-height: 30px;
+  font-weight: 700;
+}
+
+@utility font-score {
+  font-family: var(--font-display);
+  font-size: 36px;
+  line-height: 36px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+@utility font-body-custom {
+  font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: 24px;
+  font-weight: 500;
+}
+
+@utility font-label-custom {
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 18px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+@utility font-meta-custom {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 600;
+}
+
+/* ===== FootbalGame Animation Utilities ===== */
+@utility animate-float {
+  animation: float 4s ease-in-out infinite;
+}
+
+@utility glow-cyan {
+  animation: pulse-cyan 3s ease-in-out infinite;
+}
+
+@utility glow-lime {
+  animation: pulse-lime 3s ease-in-out infinite;
 }
 
 /* CupRush 26 core palette — see DESIGN.md § 02 Colors (dark-only). */
@@ -1185,5 +1283,72 @@ button {
   }
   .result-reveal {
     animation: result-fade 200ms ease;
+  }
+}
+
+/* =====================================================================
+ * FootbalGame Prototype Styles
+ * Ported from FootbalGame/src/index.css to enable inline Tailwind
+ * components (BetsTracker, PremiumAvatar, LeaderboardView, ProfileView,
+ * CardDeck, App.tsx phone frame + sidebars) to render correctly.
+ * ===================================================================== */
+
+/* Scrollbar hiding for overflow containers */
+.scrollbar-none {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+
+/* Diagonal rush-line pattern for empty space backgrounds (max 8% opacity) */
+.bg-rush-lines {
+  background-image: repeating-linear-gradient(45deg, rgba(49, 83, 67, 0.08) 0, rgba(49, 83, 67, 0.08) 1px, transparent 0, transparent 8px);
+}
+
+/* Signature Clipped Corners — brand toolkit angular cuts. */
+.clip-control {
+  clip-path: polygon(0 0, calc(100% - 8px) 0, 100% 8px, 100% 100%, 0 100%);
+}
+
+.clip-panel {
+  clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 0 100%);
+}
+
+.clip-hero {
+  clip-path: polygon(0 0, calc(100% - 20px) 0, 100% 20px, 100% 100%, 0 100%);
+}
+
+/* ===== FootbalGame Keyframes ===== */
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+
+@keyframes pulse-cyan {
+  0%, 100% { box-shadow: 0 0 10px rgba(25, 245, 210, 0.2); }
+  50% { box-shadow: 0 0 20px rgba(25, 245, 210, 0.5); }
+}
+
+@keyframes pulse-lime {
+  0%, 100% { box-shadow: 0 0 10px rgba(215, 255, 63, 0.2); }
+  50% { box-shadow: 0 0 20px rgba(215, 255, 63, 0.5); }
+}
+
+/* Fade-in for modals / bet-confirmed overlay */
+@keyframes animate-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.animate-fade-in {
+  animation: animate-fade-in 300ms ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-in {
+    animation: none;
   }
 }
