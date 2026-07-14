@@ -25,7 +25,8 @@ export function PrivyEmailLogin({ onDone }: { onDone(): void }) {
     try {
       await sendCode({ email: trimmed });
       setStage("code");
-    } catch {
+    } catch (error) {
+      console.error("failed to send Privy email code", error);
       setError("Couldn't send a code to that email. Check it and try again.");
     } finally {
       setBusy(false);
@@ -41,7 +42,8 @@ export function PrivyEmailLogin({ onDone }: { onDone(): void }) {
     try {
       await loginWithCode({ code: trimmed });
       onDone();
-    } catch {
+    } catch (error) {
+      console.error("failed to verify Privy email code", error);
       setError("That code didn't work. Check it or request a new one.");
     } finally {
       setBusy(false);
