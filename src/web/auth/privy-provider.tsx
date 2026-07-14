@@ -34,7 +34,15 @@ function PrivyBridge({ children }: { children: ReactNode }) {
 
   // Route every API request through Privy's access token while signed in.
   useEffect(() => {
-    setAuthTokenProvider(async () => (authenticated ? await getAccessToken() : null));
+    setAuthTokenProvider(async () => {
+      if (!authenticated) return null;
+      try {
+        return await getAccessToken();
+      } catch (error) {
+        console.error("failed to get Privy access token", error);
+        return null;
+      }
+    });
   }, [authenticated, getAccessToken]);
 
   // The embedded Solana wallet is created asynchronously after login, so watch
@@ -44,7 +52,9 @@ function PrivyBridge({ children }: { children: ReactNode }) {
   const solanaAddress = embeddedSolanaAddress(user?.linkedAccounts);
   useEffect(() => {
     if (!authenticated || !solanaAddress) return;
-    void saveWalletAddress(solanaAddress).catch(() => {});
+    void saveWalletAddress(solanaAddress).catch((error) => {
+      console.error("failed to save wallet address", error);
+    });
   }, [authenticated, solanaAddress]);
 
   const value = useMemo<AuthContextValue>(
