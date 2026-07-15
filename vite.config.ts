@@ -8,6 +8,8 @@ const API_PORT = process.env.PORT ?? "3000";
 
 export default defineConfig({
   root: "src/web",
+  // env files live at the repo root, not under root (src/web)
+  envDir: __dirname,
   publicDir: "public",
   resolve: {
     alias: {

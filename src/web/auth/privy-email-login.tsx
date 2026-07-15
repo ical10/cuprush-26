@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { FormEvent } from "react";
 import { useLoginWithEmail } from "@privy-io/react-auth";
 
@@ -15,16 +15,24 @@ export function PrivyEmailLogin({ onDone }: { onDone(): void }) {
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [cooldown, setCooldown] = useState(0);
+
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    const id = setTimeout(() => setCooldown(cooldown - 1), 1000);
+    return () => clearTimeout(id);
+  }, [cooldown]);
 
   async function handleSendCode(event: FormEvent) {
     event.preventDefault();
     const trimmed = email.trim();
-    if (!trimmed) return;
+    if (!trimmed || cooldown > 0) return;
     setBusy(true);
     setError(null);
     try {
       await sendCode({ email: trimmed });
       setStage("code");
+      setCooldown(30);
     } catch (error) {
       console.error("failed to send Privy email code", error);
       setError("Couldn't send a code to that email. Check it and try again.");
@@ -35,12 +43,11 @@ export function PrivyEmailLogin({ onDone }: { onDone(): void }) {
 
   async function handleVerify(event: FormEvent) {
     event.preventDefault();
-    const trimmed = code.trim();
-    if (!trimmed) return;
+    if (code.length !== 6) return;
     setBusy(true);
     setError(null);
     try {
-      await loginWithCode({ code: trimmed });
+      await loginWithCode({ code });
       onDone();
     } catch (error) {
       console.error("failed to verify Privy email code", error);
@@ -73,8 +80,12 @@ export function PrivyEmailLogin({ onDone }: { onDone(): void }) {
             {error}
           </p>
         )}
-        <button type="submit" className="btn btn-primary" disabled={busy || !email.trim()}>
-          {busy ? "Sending…" : "Send code"}
+        <button
+          type="submit"
+          className="btn btn-primary"
+          disabled={busy || !email.trim() || cooldown > 0}
+        >
+          {busy ? "Sending…" : cooldown > 0 ? `Resend in ${cooldown}s` : "Send code"}
         </button>
       </form>
     );
@@ -87,10 +98,12 @@ export function PrivyEmailLogin({ onDone }: { onDone(): void }) {
         id="privy-code"
         name="code"
         inputMode="numeric"
+        pattern="[0-9]*"
+        maxLength={6}
         autoComplete="one-time-code"
         autoFocus
         value={code}
-        onChange={(event) => setCode(event.target.value)}
+        onChange={(event) => setCode(event.target.value.replace(/\D/g, ""))}
         placeholder="123456"
       />
       {error && (
@@ -98,7 +111,7 @@ export function PrivyEmailLogin({ onDone }: { onDone(): void }) {
           {error}
         </p>
       )}
-      <button type="submit" className="btn btn-primary" disabled={busy || !code.trim()}>
+      <button type="submit" className="btn btn-primary" disabled={busy || code.length !== 6}>
         {busy ? "Verifying…" : "Verify & sign in"}
       </button>
       <button
