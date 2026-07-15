@@ -12,7 +12,7 @@
     "dev": "concurrently -n vite,api -c blue,green \"vite\" \"tsx watch --env-file=.env src/api/server.ts\"",
     "build": "vite build",
     "start": "NODE_ENV=production tsx --env-file=.env src/api/server.ts",
-    "match-runner": "tsx --env-file=.env src/runner/match-runner.ts",
+    "match-runner": "tsx --env-file-if-exists=.env src/runner/match-runner.ts",
     "test": "vitest run --project unit",
     "test:watch": "vitest --project unit",
     "test:integration": "node --env-file=.env node_modules/vitest/vitest.mjs run --project integration",
