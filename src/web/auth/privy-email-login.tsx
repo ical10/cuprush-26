@@ -72,8 +72,9 @@ export function PrivyEmailLogin({ onDone }: { onDone(): void }) {
           placeholder="you@example.com"
         />
         <p className="disclosure">
-          Signing in creates an account with an embedded Solana wallet and may
-          submit approved game transactions on your behalf.
+          Signing in creates an account with an embedded Solana wallet. The
+          game server may record your approved picks on-chain, linked to your
+          wallet — you can revoke this from your profile.
         </p>
         {error && (
           <p role="alert" className="form-status form-status-error">
