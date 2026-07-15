@@ -1,21 +1,23 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import type { ReactNode } from "react";
 import { PrivyProvider, usePrivy } from "@privy-io/react-auth";
-import type { WalletWithMetadata } from "@privy-io/react-auth";
+import type {
+  LinkedAccountWithMetadata,
+  WalletWithMetadata,
+} from "@privy-io/react-auth";
 import { AuthContext } from "./auth-context";
 import type { AuthContextValue } from "./auth-context";
 import { saveWalletAddress, setAuthTokenProvider } from "../lib/api";
 
 /** The user's embedded Solana wallet (Privy-created), if it exists yet. */
 function embeddedSolanaAddress(
-  linkedAccounts: readonly { type: string }[] | undefined,
+  linkedAccounts: readonly LinkedAccountWithMetadata[] | undefined,
 ): string | null {
   const wallet = linkedAccounts?.find(
     (a): a is WalletWithMetadata =>
       a.type === "wallet" &&
-      (a as WalletWithMetadata).chainType === "solana" &&
-      ((a as WalletWithMetadata).walletClientType === "privy" ||
-        (a as WalletWithMetadata).walletClientType === "privy-v2"),
+      a.chainType === "solana" &&
+      (a.walletClientType === "privy" || a.walletClientType === "privy-v2"),
   );
   return wallet?.address ?? null;
 }
@@ -32,18 +34,23 @@ function embeddedSolanaAddress(
 function PrivyBridge({ children }: { children: ReactNode }) {
   const { ready, authenticated, user, getAccessToken, logout } = usePrivy();
 
-  // Route every API request through Privy's access token while signed in.
-  useEffect(() => {
+  const authRef = useRef({ authenticated, getAccessToken });
+  authRef.current = { authenticated, getAccessToken };
+
+  // Registered during render (not an effect) so the provider exists before any
+  // child effect can fire a request; reads through the ref so it never goes stale.
+  useMemo(() => {
     setAuthTokenProvider(async () => {
-      if (!authenticated) return null;
+      const auth = authRef.current;
+      if (!auth.authenticated) return null;
       try {
-        return await getAccessToken();
+        return await auth.getAccessToken();
       } catch (error) {
         console.error("failed to get Privy access token", error);
         return null;
       }
     });
-  }, [authenticated, getAccessToken]);
+  }, []);
 
   // The embedded Solana wallet is created asynchronously after login, so watch
   // user.linkedAccounts rather than reading it inline at the login call site.
