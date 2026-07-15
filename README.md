@@ -6,12 +6,13 @@ See `plans/PRD.md` for the full product spec.
 
 ## Architecture
 
-One TypeScript package, ESM, Node 22, pnpm. A single Hono process runs the
-REST API, the SSE live stream, TxLINE ingestion, and three one-minute
-background loops (question scheduler, prediction reconciler, settlement
-executor) — all wired in `src/api/server.ts` with graceful shutdown on
-SIGINT/SIGTERM. Chain access goes through one shared adapter (in-memory stub
-by default, `CHAIN_MODE=solana` for the real thing).
+One TypeScript package, ESM, Node 22, pnpm. A single Hono process always runs
+the REST API and SSE live stream. In the default `full` runtime mode it also
+runs TxLINE ingestion and three one-minute background loops (question
+scheduler, prediction reconciler, settlement executor). Everything is wired
+in `src/api/server.ts` with graceful shutdown on SIGINT/SIGTERM. Chain access
+goes through one shared adapter (in-memory stub by default,
+`CHAIN_MODE=solana` for the real thing).
 
 Data flow: TxLINE events → `src/txline` (sequence-guarded apply into
 `fixtures` + in-process bus) → the bus fans out to the SSE `/api/live` route
@@ -71,12 +72,14 @@ corner card open to answer immediately. It is idempotent and local-only.
 
 ## Environment
 
-See `.env.example` for inline docs. Only the first three are required locally.
+See `.env.example` for inline docs. Local development needs `DATABASE_URL`
+and an explicit `AUTH_MODE=dev`; the remaining variables are optional.
 
 | Variable | Default | Purpose |
 |---|---|---|
 | `DATABASE_URL` | — (required) | Postgres connection string |
 | `PORT` | `3000` | Hono server port |
+| `APP_RUNTIME_MODE` | `full` | `full` runs HTTP plus background work; `web` runs HTTP only |
 | `AUTH_MODE` | `privy` | `privy` verification (fail-closed default) or explicit `dev` stub |
 | `TXLINE_MODE` | `replay` | `replay` captured fixtures or `live` stream |
 | `TXLINE_BASE_URL` / `TXLINE_API_KEY` | — | TxLINE origin (no `/api` suffix) + X-Api-Token key (live mode only; guest JWT self-minted) |
@@ -214,14 +217,30 @@ cannot scale horizontally.
 
 Environment variables per environment:
 
-| Variable | Demo env (now) | Production (once Privy creds land) |
-|---|---|---|
-| `DATABASE_URL` | reference variable `${{Postgres.DATABASE_URL}}` | same |
-| `AUTH_MODE` | `dev` | `privy` |
-| `NODE_ENV` | `development` — the dev auth stub refuses prod-ish values | `production` |
-| `TXLINE_MODE` | `replay` (bundled fixtures, zero creds) | `live` + TxLINE creds |
-| `PRIVY_APP_ID` / `PRIVY_APP_SECRET` | unset | required |
-| `PORT` | Railway-injected | same |
+| Variable | Demo env (now) | Production (idle) | Production (active match) |
+|---|---|---|---|
+| `DATABASE_URL` | reference variable `${{Postgres.DATABASE_URL}}` | same | same |
+| `APP_RUNTIME_MODE` | `full` | `web` | `full` |
+| `AUTH_MODE` | `dev` | `privy` | `privy` |
+| `NODE_ENV` | `development` — the dev auth stub refuses prod-ish values | `production` | `production` |
+| `TXLINE_MODE` | `replay` (bundled fixtures, zero creds) | `live` + TxLINE creds | `live` + TxLINE creds |
+| `PRIVY_APP_ID` / `PRIVY_APP_SECRET` | unset | required | required |
+| `PORT` | Railway-injected | same | same |
+
+`APP_RUNTIME_MODE=full` preserves the single-process behavior: the app runs
+the HTTP server, TxLINE ingestion, question scheduler, prediction reconciler,
+and settlement executor. `APP_RUNTIME_MODE=web` runs only the HTTP server so
+Railway Serverless can sleep the app after an idle period. Web mode pauses all
+ingestion and background transitions, so switch production to `full` before an
+active match and redeploy. After the match is settled, switch back to `web`
+and redeploy to restore idle sleeping. Database connections opened by API
+requests close after 60 seconds of pool inactivity, leaving Railway's outbound
+idle window clear.
+
+For staging tests, start Postgres first, deploy the app with
+`APP_RUNTIME_MODE=full`, and run the test. Stop the app before Postgres when
+finished. For HTTP-only testing, use `web`; Postgres may remain stopped until a
+request needs database access.
 
 Auth fails closed: leaving `AUTH_MODE` unset selects the Privy adapter,
 which refuses to boot without `PRIVY_APP_ID`/`PRIVY_APP_SECRET`. A deploy
