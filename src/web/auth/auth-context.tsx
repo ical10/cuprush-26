@@ -9,13 +9,15 @@ export function authMode(): AuthMode {
   return raw === "privy" ? "privy" : "dev";
 }
 
-type AuthContextValue = {
+export type AuthContextValue = {
   isAuthenticated: boolean;
   login(token: string): void;
   logout(): void;
 };
 
-const AuthContext = createContext<AuthContextValue | null>(null);
+// Exported so the Privy bridge (privy-provider.tsx) can supply the same
+// context shape from Privy's session instead of a localStorage token.
+export const AuthContext = createContext<AuthContextValue | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [token, setTokenState] = useState<string | null>(() => getToken());

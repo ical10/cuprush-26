@@ -8,6 +8,8 @@ const API_PORT = process.env.PORT ?? "3000";
 
 export default defineConfig({
   root: "src/web",
+  // env files live at the repo root, not under root (src/web)
+  envDir: __dirname,
   publicDir: "public",
   resolve: {
     alias: {
@@ -17,6 +19,22 @@ export default defineConfig({
   build: {
     outDir: "../../dist/client",
     emptyOutDir: true,
+    rollupOptions: {
+      output: {
+        // Privy (+ its wallet stack) is large and changes rarely — split it out
+        // so it caches separately and doesn't bloat the app chunk on every deploy.
+        manualChunks(id: string) {
+          if (
+            id.includes("@privy-io") ||
+            id.includes("@reown") ||
+            id.includes("walletconnect") ||
+            id.includes("@solana")
+          ) {
+            return "privy";
+          }
+        },
+      },
+    },
   },
   server: {
     proxy: {
@@ -31,6 +49,9 @@ export default defineConfig({
     tailwindcss(),
     VitePWA({
       registerType: "autoUpdate",
+      // The Privy chunk (~4.3 MB) exceeds Workbox's 2 MiB precache limit and
+      // shouldn't be precached anyway — the browser HTTP cache handles it.
+      workbox: { globIgnores: ["**/privy-*.js"] },
       includeAssets: ["favicon.svg", "og.jpg"],
       manifest: {
         name: "CupRush 26",

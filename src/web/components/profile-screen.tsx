@@ -124,6 +124,12 @@ export function ProfileScreen() {
         {statusLine("delegation")}
       </div>
 
+      <div className="profile-field">
+        <button type="button" className="btn btn-secondary" onClick={() => logout()}>
+          Sign out
+        </button>
+      </div>
+
       <div className="danger-zone">
         {!confirmDelete ? (
           <button
