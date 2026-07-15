@@ -59,6 +59,7 @@ jobs:
           --health-retries 5
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/worldcup_hilo
+      AUTH_MODE: dev
       # The integration global setup shells out to dropdb/createdb, which
       # read the PG* vars to reach the service container.
       PGHOST: localhost

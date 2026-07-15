@@ -8,7 +8,7 @@ if (!databaseUrl) {
   throw new Error("DATABASE_URL is required");
 }
 
-export const queryClient = postgres(databaseUrl);
+export const queryClient = postgres(databaseUrl, { idle_timeout: 60 });
 export const db = drizzle(queryClient, { schema });
 
 export type Database = typeof db;
