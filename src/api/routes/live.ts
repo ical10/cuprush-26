@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { streamSSE } from "hono/streaming";
 import { fixtures } from "../../db/schema";
 import { onFixtureUpdate, type FixtureUpdate } from "../../txline/bus";
+import type { FixtureNotificationBridge } from "../../txline/postgres-bus";
 import type { DbProvider } from "../auth/middleware";
 
 const HEARTBEAT_MS = 25_000;
@@ -27,7 +28,10 @@ function snapshotPayload(row: typeof fixtures.$inferSelect): FixtureUpdate {
  * as new as anything it already saw — no event log to replay from). Then
  * relays applied fixture updates from the in-process bus as they happen.
  */
-export function createLiveRoute(getDb: DbProvider) {
+export function createLiveRoute(
+  getDb: DbProvider,
+  notificationBridge?: FixtureNotificationBridge,
+) {
   return new Hono().get("/live", (c) => {
     return streamSSE(c, async (stream) => {
       // Everything below is registered synchronously, before any `await`:
@@ -45,18 +49,31 @@ export function createLiveRoute(getDb: DbProvider) {
       });
 
       let heartbeat: ReturnType<typeof setInterval> | undefined;
+      let releaseNotifications: (() => Promise<void>) | undefined;
+      let cleanedUp = false;
       let resolveDone: () => void = () => {};
       const done = new Promise<void>((resolve) => {
         resolveDone = resolve;
       });
       const cleanup = () => {
+        if (cleanedUp) return;
+        cleanedUp = true;
         if (heartbeat) clearInterval(heartbeat);
         unsubscribe();
+        void releaseNotifications?.();
         resolveDone();
       };
       stream.onAbort(cleanup);
 
       try {
+        if (notificationBridge) {
+          releaseNotifications = await notificationBridge.acquire(cleanup);
+          if (cleanedUp) {
+            await releaseNotifications();
+            return;
+          }
+        }
+
         const db = await getDb();
         const rows = await db.select().from(fixtures);
         for (const row of rows) {

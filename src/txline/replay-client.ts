@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import type { Database } from "../db/client";
 import { fixtures } from "../db/schema";
 import { applyTxLineEvent, toFixtureUpdate } from "./apply";
-import { publishFixtureUpdate } from "./bus";
+import { publishFixtureUpdate, type FixtureUpdatePublisher } from "./bus";
 import { txLineReplayFileSchema, type TxLineReplayFile } from "./schema";
 import type { TxLineClient } from "./client";
 
@@ -21,6 +21,7 @@ export type ReplayClientOptions = {
    * timer for a more realistic demo.
    */
   intervalMs?: number;
+  publishUpdate?: FixtureUpdatePublisher;
 };
 
 export async function loadReplayFixtures(fixturesDir: string): Promise<TxLineReplayFile[]> {
@@ -54,33 +55,58 @@ async function seedSnapshot(db: Database, snapshot: TxLineReplayFile["snapshot"]
 export function createReplayTxLineClient(options: ReplayClientOptions): TxLineClient {
   const fixturesDir = options.fixturesDir ?? DEFAULT_FIXTURES_DIR;
   const intervalMs = options.intervalMs ?? 0;
+  const publishUpdate = options.publishUpdate ?? publishFixtureUpdate;
   const timers: NodeJS.Timeout[] = [];
   let stopped = false;
+  let files: TxLineReplayFile[] | undefined;
+  let eventsApplied = false;
+  let detachAbort: (() => void) | undefined;
+  const noFailure = new Promise<Error>(() => {});
 
   async function applyEvent(event: TxLineReplayFile["events"][number]): Promise<void> {
     if (stopped) return;
     const outcome = await applyTxLineEvent(options.db, event);
     if (outcome.applied) {
-      publishFixtureUpdate(toFixtureUpdate(outcome.fixture));
+      await publishUpdate(toFixtureUpdate(outcome.fixture));
     }
   }
 
   return {
-    async start() {
+    async prepare(signal) {
       stopped = false;
-      const files = await loadReplayFixtures(fixturesDir);
+      signal?.throwIfAborted();
+      files = await loadReplayFixtures(fixturesDir);
 
       for (const file of files) {
+        signal?.throwIfAborted();
         await seedSnapshot(options.db, file.snapshot);
       }
 
-      for (const file of files) {
-        if (intervalMs <= 0) {
+      if (intervalMs <= 0) {
+        for (const file of files) {
           for (const event of file.events) {
+            signal?.throwIfAborted();
             await applyEvent(event);
           }
-          continue;
         }
+        eventsApplied = true;
+      }
+    },
+    async start(signal) {
+      if (!files) await this.prepare(signal);
+      signal?.throwIfAborted();
+      const preparedFiles = files ?? [];
+      const abort = () => {
+        stopped = true;
+        for (const timer of timers) clearTimeout(timer);
+        timers.length = 0;
+      };
+      signal?.addEventListener("abort", abort, { once: true });
+      detachAbort = () => signal?.removeEventListener("abort", abort);
+
+      if (eventsApplied) return;
+
+      for (const file of preparedFiles) {
 
         file.events.forEach((event, index) => {
           const timer = setTimeout(() => void applyEvent(event), (index + 1) * intervalMs);
@@ -88,10 +114,17 @@ export function createReplayTxLineClient(options: ReplayClientOptions): TxLineCl
         });
       }
     },
+    waitForFailure() {
+      return noFailure;
+    },
     async stop() {
       stopped = true;
+      detachAbort?.();
+      detachAbort = undefined;
       for (const timer of timers) clearTimeout(timer);
       timers.length = 0;
+      files = undefined;
+      eventsApplied = false;
     },
   };
 }

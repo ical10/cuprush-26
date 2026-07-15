@@ -2,13 +2,14 @@ import { z } from "zod";
 import type { Database } from "../db/client";
 import { fixtures } from "../db/schema";
 import { applyTxLineEvent, toFixtureUpdate } from "./apply";
-import { publishFixtureUpdate } from "./bus";
+import { publishFixtureUpdate, type FixtureUpdatePublisher } from "./bus";
 import {
   parseScoreSnapshot,
   txLineFixtureListSchema,
   txLineWireEventSchema,
   wireEventToTxLineEvent,
   type TxLineEvent,
+  type TxLineFixtureSnapshot,
 } from "./schema";
 import type { TxLineClient } from "./client";
 
@@ -208,13 +209,40 @@ export type LiveClientOptions = {
   env: NodeJS.ProcessEnv;
   /** Test seam; defaults to global fetch. */
   fetchImpl?: FetchLike;
+  publishUpdate?: FixtureUpdatePublisher;
+  reconnectDelaysMs?: number[];
+  sleep?: (milliseconds: number, signal: AbortSignal) => Promise<void>;
 };
+
+const DEFAULT_RECONNECT_DELAYS_MS = [1_000, 5_000, 15_000];
+
+function sleepWithSignal(milliseconds: number, signal: AbortSignal): Promise<void> {
+  if (signal.aborted) return Promise.resolve();
+  return new Promise((resolve) => {
+    const timer = setTimeout(finish, milliseconds);
+    signal.addEventListener("abort", finish, { once: true });
+    function finish() {
+      clearTimeout(timer);
+      signal.removeEventListener("abort", finish);
+      resolve();
+    }
+  });
+}
 
 export function createLiveTxLineClient(options: LiveClientOptions): TxLineClient {
   const config = readLiveConfig(options.env);
   const authorizedFetch = createAuthorizedFetch(config, options.fetchImpl ?? fetch);
+  const publishUpdate = options.publishUpdate ?? publishFixtureUpdate;
+  const reconnectDelaysMs = options.reconnectDelaysMs ?? DEFAULT_RECONNECT_DELAYS_MS;
+  const sleep = options.sleep ?? sleepWithSignal;
   let controller: AbortController | null = null;
   let loop: Promise<void> | null = null;
+  let detachExternalAbort: (() => void) | undefined;
+  let preparedSnapshots: TxLineFixtureSnapshot[] | null = null;
+  let resolveFailure: ((error: Error) => void) | undefined;
+  const failure = new Promise<Error>((resolve) => {
+    resolveFailure = resolve;
+  });
 
   async function fetchJson(path: string, signal: AbortSignal): Promise<unknown> {
     const res = await authorizedFetch(path, { signal });
@@ -227,13 +255,11 @@ export function createLiveTxLineClient(options: LiveClientOptions): TxLineClient
   async function applyEvent(event: TxLineEvent): Promise<void> {
     const outcome = await applyTxLineEvent(options.db, event);
     if (outcome.applied) {
-      publishFixtureUpdate(toFixtureUpdate(outcome.fixture));
+      await publishUpdate(toFixtureUpdate(outcome.fixture));
     }
   }
 
-  // Reconnect fetches the snapshots before resuming the stream, so a missed
-  // event is always healed by the per-fixture score snapshot.
-  async function seedSnapshots(signal: AbortSignal): Promise<void> {
+  async function discoverFixtures(signal: AbortSignal): Promise<TxLineFixtureSnapshot[]> {
     const raw = await fetchJson("/api/fixtures/snapshot", signal);
     const snapshots = txLineFixtureListSchema.parse(raw);
 
@@ -249,10 +275,25 @@ export function createLiveTxLineClient(options: LiveClientOptions): TxLineClient
           lastSeq: snapshot.seq,
           stats: snapshot.stats,
         })
-        .onConflictDoNothing({ target: fixtures.id });
+        .onConflictDoUpdate({
+          target: fixtures.id,
+          set: {
+            homeTeam: snapshot.homeTeam,
+            awayTeam: snapshot.awayTeam,
+            startsAt: new Date(snapshot.startsAt),
+          },
+        });
     }
+    preparedSnapshots = snapshots;
+    return snapshots;
+  }
 
+  async function seedScores(
+    snapshots: TxLineFixtureSnapshot[],
+    signal: AbortSignal,
+  ): Promise<void> {
     for (const snapshot of snapshots) {
+      signal.throwIfAborted();
       const events = parseScoreSnapshot(
         await fetchJson(`/api/scores/snapshot/${snapshot.fixtureId}`, signal),
       );
@@ -262,7 +303,10 @@ export function createLiveTxLineClient(options: LiveClientOptions): TxLineClient
     }
   }
 
-  async function* streamEvents(signal: AbortSignal): AsyncGenerator<unknown> {
+  async function* streamEvents(
+    signal: AbortSignal,
+    onConnected: () => void,
+  ): AsyncGenerator<unknown> {
     const res = await authorizedFetch("/api/scores/stream", {
       signal,
       accept: "text/event-stream",
@@ -270,13 +314,15 @@ export function createLiveTxLineClient(options: LiveClientOptions): TxLineClient
     if (!res.ok || !res.body) {
       throw new Error(`TxLINE stream request failed: ${res.status} ${res.statusText}`);
     }
+    onConnected();
     yield* sseEventsFromChunks(decodeChunks(res.body));
   }
 
-  async function run(signal: AbortSignal): Promise<void> {
-    await seedSnapshots(signal);
-
-    for await (const raw of streamEvents(signal)) {
+  async function consumeStream(
+    signal: AbortSignal,
+    onConnected: () => void,
+  ): Promise<void> {
+    for await (const raw of streamEvents(signal, onConnected)) {
       if (signal.aborted) return;
       const wire = txLineWireEventSchema.safeParse(raw);
       if (!wire.success) {
@@ -287,21 +333,121 @@ export function createLiveTxLineClient(options: LiveClientOptions): TxLineClient
       if (!event) continue; // informational action without a Score
       await applyEvent(event);
     }
+    if (!signal.aborted) throw new Error("TxLINE live stream ended unexpectedly");
+  }
+
+  async function runWithReconnect(
+    signal: AbortSignal,
+    onConnected: () => void,
+  ): Promise<void> {
+    let connected = false;
+    let lastError: unknown;
+
+    for (let attempt = 0; attempt <= reconnectDelaysMs.length; attempt += 1) {
+      if (signal.aborted) return;
+      try {
+        if (attempt > 0) {
+          const snapshots = await discoverFixtures(signal);
+          await seedScores(snapshots, signal);
+        }
+        await consumeStream(signal, () => {
+          if (!connected) {
+            connected = true;
+            onConnected();
+          }
+        });
+        return;
+      } catch (error) {
+        if (signal.aborted) return;
+        lastError = error;
+        const delay = reconnectDelaysMs[attempt];
+        if (delay === undefined) break;
+        await sleep(delay, signal);
+      }
+    }
+
+    throw new Error("TxLINE live stream exhausted reconnect attempts", {
+      cause: lastError,
+    });
   }
 
   return {
-    async start() {
-      controller = new AbortController();
-      loop = run(controller.signal).catch((error) => {
-        if (controller?.signal.aborted) return;
-        console.error("TxLINE live client stopped unexpectedly", error);
+    async prepare(signal) {
+      if (preparedSnapshots) return;
+      if (controller) throw new Error("TxLINE live client already started");
+      const preparationController = new AbortController();
+      const abort = () => preparationController.abort(signal?.reason);
+      signal?.addEventListener("abort", abort, { once: true });
+      try {
+        signal?.throwIfAborted();
+        await discoverFixtures(preparationController.signal);
+      } finally {
+        signal?.removeEventListener("abort", abort);
+      }
+    },
+    async start(signal) {
+      if (controller) return;
+      const nextController = new AbortController();
+      const abort = () => nextController.abort(signal?.reason);
+      signal?.addEventListener("abort", abort, { once: true });
+      detachExternalAbort = () => signal?.removeEventListener("abort", abort);
+      controller = nextController;
+      try {
+        signal?.throwIfAborted();
+        if (!preparedSnapshots) await discoverFixtures(nextController.signal);
+        await seedScores(preparedSnapshots ?? [], nextController.signal);
+      } catch (error) {
+        nextController.abort();
+        controller = null;
+        detachExternalAbort();
+        detachExternalAbort = undefined;
+        throw error;
+      }
+
+      let resolveConnected: (() => void) | undefined;
+      const connected = new Promise<void>((resolve) => {
+        resolveConnected = resolve;
       });
+      loop = runWithReconnect(nextController.signal, () => resolveConnected?.()).catch(
+        (error: unknown) => {
+          if (nextController.signal.aborted) return;
+          const terminalError =
+            error instanceof Error ? error : new Error(String(error));
+          console.error("TxLINE live client stopped after reconnect attempts", terminalError);
+          resolveFailure?.(terminalError);
+        },
+      );
+      const startupFailure = failure.then((error) => {
+        throw error;
+      });
+      let rejectAborted: ((reason?: unknown) => void) | undefined;
+      const aborted = new Promise<never>((_resolve, reject) => {
+        rejectAborted = reject;
+      });
+      const handleAbort = () => {
+        rejectAborted?.(
+          nextController.signal.reason ?? new DOMException("Aborted", "AbortError"),
+        );
+      };
+      if (nextController.signal.aborted) handleAbort();
+      else nextController.signal.addEventListener("abort", handleAbort, { once: true });
+      try {
+        await Promise.race([connected, startupFailure, aborted]);
+      } finally {
+        nextController.signal.removeEventListener("abort", handleAbort);
+      }
+    },
+    waitForFailure() {
+      return failure;
     },
     async stop() {
       controller?.abort();
       await loop?.catch(() => {});
+      detachExternalAbort?.();
+      detachExternalAbort = undefined;
       controller = null;
       loop = null;
+      preparedSnapshots = null;
     },
   };
 }

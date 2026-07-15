@@ -49,8 +49,9 @@ export default defineConfig({
     tailwindcss(),
     VitePWA({
       registerType: "autoUpdate",
-      // The Privy chunk exceeds Workbox's 2 MiB default; allow precaching it.
-      workbox: { maximumFileSizeToCacheInBytes: 4 * 1024 * 1024 },
+      // The Privy chunk (~4.3 MB) exceeds Workbox's 2 MiB precache limit and
+      // shouldn't be precached anyway — the browser HTTP cache handles it.
+      workbox: { globIgnores: ["**/privy-*.js"] },
       includeAssets: ["favicon.svg", "og.jpg"],
       manifest: {
         name: "CupRush 26",

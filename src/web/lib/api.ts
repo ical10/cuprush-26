@@ -85,3 +85,7 @@ export function revokeDelegation(): Promise<{ delegationRevokedAt: string | null
 export function fetchLeaderboard(): Promise<LeaderboardRow[]> {
   return request("/leaderboard");
 }
+
+export function logout(): Promise<void> {
+  return request("/logout", { method: "POST" });
+}

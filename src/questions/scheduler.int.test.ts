@@ -259,6 +259,38 @@ describe("scheduler.tick — overdue settling scan", () => {
   });
 });
 
+describe("scheduler.tick — durable fixture catch-up", () => {
+  it("recovers locked to live after a live fixture event was missed", async () => {
+    const fixtureId = await insertFixture({ gameState: "live" });
+    const question = await insertQuestion(fixtureId, { status: "locked" });
+
+    const result = await createQuestionScheduler({ db }).tick();
+
+    expect(await questionStatus(question.id)).toBe("live");
+    expect(result.fixtureCatchUpCount).toBeGreaterThanOrEqual(1);
+  });
+
+  it("recovers both locked to live and live to settling for an already-finished fixture", async () => {
+    const fixtureId = await insertFixture({ gameState: "finished" });
+    const question = await insertQuestion(fixtureId, { status: "locked" });
+
+    await createQuestionScheduler({ db }).tick();
+
+    const [row] = await db.select().from(questions).where(eq(questions.id, question.id));
+    expect(row?.status).toBe("settling");
+    expect(row?.settlingAt).not.toBeNull();
+  });
+
+  it("recovers void transitions from durable terminal fixture state", async () => {
+    const fixtureId = await insertFixture({ gameState: "cancelled" });
+    const question = await insertQuestion(fixtureId, { status: "open" });
+
+    await createQuestionScheduler({ db }).tick();
+
+    expect(await questionStatus(question.id)).toBe("void");
+  });
+});
+
 describe("scheduler.start/stop", () => {
   it("runs a tick immediately on start and stops cleanly", async () => {
     const fixtureId = await insertFixture();
