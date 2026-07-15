@@ -2,11 +2,13 @@ import { readFile } from "node:fs/promises";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createAuthorizedFetch,
+  createLiveTxLineClient,
   parseSseStream,
   readLiveConfig,
   sseEventsFromChunks,
   type SseFrame,
 } from "./live-client";
+import type { Database } from "../db/client";
 
 async function readCapturedRaw(name: string): Promise<string> {
   return readFile(new URL(`./fixtures/captured/${name}`, import.meta.url), "utf8");
@@ -256,5 +258,207 @@ describe("createAuthorizedFetch", () => {
     await authorizedFetch("/api/scores/snapshot/1");
 
     expect(minted).toBe(1);
+  });
+});
+
+describe("createLiveTxLineClient startup", () => {
+  const env = {
+    TXLINE_BASE_URL: "https://txline.example.com",
+    TXLINE_API_KEY: "secret",
+  } as NodeJS.ProcessEnv;
+  const fixtureSnapshot = {
+    FixtureId: 42,
+    StartTime: Date.parse("2030-06-20T12:00:00.000Z"),
+    Participant1: "Home",
+    Participant2: "Away",
+    Participant1IsHome: true,
+  };
+
+  function fixtureOnlyDb(): Database {
+    return {
+      insert: () => ({
+        values: () => ({
+          onConflictDoUpdate: async () => {},
+        }),
+      }),
+    } as unknown as Database;
+  }
+
+  it("prepare discovers fixture metadata without fetching scores or opening a stream", async () => {
+    const urls: string[] = [];
+    const fetchImpl = vi.fn(async (input: URL | RequestInfo) => {
+      const url = String(input);
+      urls.push(url);
+      return url.endsWith("/auth/guest/start")
+        ? new Response(JSON.stringify({ token: "jwt" }), { status: 200 })
+        : new Response(JSON.stringify([fixtureSnapshot]), { status: 200 });
+    }) as typeof fetch;
+    const client = createLiveTxLineClient({ db: fixtureOnlyDb(), env, fetchImpl });
+
+    await client.prepare();
+
+    expect(urls).toEqual([
+      "https://txline.example.com/auth/guest/start",
+      "https://txline.example.com/api/fixtures/snapshot",
+    ]);
+    await client.stop();
+  });
+
+  it("does not resolve start until the initial fixture snapshot is applied", async () => {
+    let releaseSnapshot: (() => void) | undefined;
+    const snapshotReady = new Promise<void>((resolve) => {
+      releaseSnapshot = resolve;
+    });
+    const fetchImpl = vi.fn(async (input: URL | RequestInfo) => {
+      const url = String(input);
+      if (url.endsWith("/auth/guest/start")) {
+        return new Response(JSON.stringify({ token: "jwt" }), { status: 200 });
+      }
+      if (url.endsWith("/api/fixtures/snapshot")) {
+        await snapshotReady;
+        return new Response(JSON.stringify([]), { status: 200 });
+      }
+      return new Response(new ReadableStream({ start(controller) { controller.close(); } }), {
+        status: 200,
+        headers: { "content-type": "text/event-stream" },
+      });
+    }) as typeof fetch;
+    const client = createLiveTxLineClient({ db: {} as Database, env, fetchImpl });
+    let started = false;
+
+    const start = client.start().then(() => {
+      started = true;
+    });
+    await vi.waitFor(() => expect(fetchImpl).toHaveBeenCalledTimes(2));
+    expect(started).toBe(false);
+
+    releaseSnapshot?.();
+    await start;
+    expect(started).toBe(true);
+    await client.stop();
+  });
+
+  it("rejects start when initial synchronization fails", async () => {
+    const fetchImpl = vi.fn(async (input: URL | RequestInfo) => {
+      const url = String(input);
+      if (url.endsWith("/auth/guest/start")) {
+        return new Response(JSON.stringify({ token: "jwt" }), { status: 200 });
+      }
+      return new Response("failure", { status: 503, statusText: "Unavailable" });
+    }) as typeof fetch;
+    const client = createLiveTxLineClient({ db: {} as Database, env, fetchImpl });
+
+    await expect(client.start()).rejects.toThrow(/503/);
+    await client.stop();
+  });
+
+  it("re-snapshots and reconnects after a dropped stream", async () => {
+    let fixtureCalls = 0;
+    let streamCalls = 0;
+    const fetchImpl = vi.fn(async (input: URL | RequestInfo, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/auth/guest/start")) {
+        return new Response(JSON.stringify({ token: "jwt" }), { status: 200 });
+      }
+      if (url.endsWith("/api/fixtures/snapshot")) {
+        fixtureCalls += 1;
+        return new Response(JSON.stringify([]), { status: 200 });
+      }
+      streamCalls += 1;
+      if (streamCalls === 1) return new Response("failure", { status: 503 });
+      return new Response(
+        new ReadableStream({
+          start(controller) {
+            init?.signal?.addEventListener(
+              "abort",
+              () => controller.error(new DOMException("Aborted", "AbortError")),
+              { once: true },
+            );
+          },
+        }),
+        { status: 200 },
+      );
+    }) as typeof fetch;
+    const client = createLiveTxLineClient({
+      db: {} as Database,
+      env,
+      fetchImpl,
+      reconnectDelaysMs: [0],
+      sleep: async () => {},
+    });
+
+    const starting = client.start();
+    await vi.waitFor(() => expect(streamCalls).toBe(2));
+    await starting;
+
+    expect(streamCalls).toBe(2);
+    expect(fixtureCalls).toBe(2);
+    await client.stop();
+  });
+
+  it("surfaces terminal EOF after exhausting bounded reconnects", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    let streamCalls = 0;
+    const fetchImpl = vi.fn(async (input: URL | RequestInfo) => {
+      const url = String(input);
+      if (url.endsWith("/auth/guest/start")) {
+        return new Response(JSON.stringify({ token: "jwt" }), { status: 200 });
+      }
+      if (url.endsWith("/api/fixtures/snapshot")) {
+        return new Response(JSON.stringify([]), { status: 200 });
+      }
+      streamCalls += 1;
+      return new Response(new ReadableStream({ start(controller) { controller.close(); } }), {
+        status: 200,
+      });
+    }) as typeof fetch;
+    const client = createLiveTxLineClient({
+      db: {} as Database,
+      env,
+      fetchImpl,
+      reconnectDelaysMs: [0],
+      sleep: async () => {},
+    });
+
+    await client.start();
+    const terminal = await client.waitForFailure();
+
+    expect(terminal.message).toMatch(/exhausted reconnect/i);
+    expect(streamCalls).toBe(2);
+    expect(error).toHaveBeenCalledWith(
+      "TxLINE live client stopped after reconnect attempts",
+      terminal,
+    );
+    await client.stop();
+  });
+
+  it("aborts while the initial stream connection is pending", async () => {
+    const controller = new AbortController();
+    let streamRequested = false;
+    const fetchImpl = vi.fn(async (input: URL | RequestInfo, init?: RequestInit) => {
+      const url = String(input);
+      if (url.endsWith("/auth/guest/start")) {
+        return new Response(JSON.stringify({ token: "jwt" }), { status: 200 });
+      }
+      if (url.endsWith("/api/fixtures/snapshot")) {
+        return new Response(JSON.stringify([]), { status: 200 });
+      }
+      streamRequested = true;
+      return new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener(
+          "abort",
+          () => reject(new DOMException("Aborted", "AbortError")),
+          { once: true },
+        );
+      });
+    }) as typeof fetch;
+    const client = createLiveTxLineClient({ db: {} as Database, env, fetchImpl });
+
+    const starting = client.start(controller.signal);
+    await vi.waitFor(() => expect(streamRequested).toBe(true));
+    controller.abort();
+
+    await expect(starting).rejects.toMatchObject({ name: "AbortError" });
+    await client.stop();
   });
 });

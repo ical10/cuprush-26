@@ -6,19 +6,18 @@ See `plans/PRD.md` for the full product spec.
 
 ## Architecture
 
-One TypeScript package, ESM, Node 22, pnpm. A single Hono process always runs
-the REST API and SSE live stream. In the default `full` runtime mode it also
-runs TxLINE ingestion and three one-minute background loops (question
-scheduler, prediction reconciler, settlement executor). Everything is wired
-in `src/api/server.ts` with graceful shutdown on SIGINT/SIGTERM. Chain access
-goes through one shared adapter (in-memory stub by default,
+One TypeScript package, ESM, Node 22, pnpm. Hono runs the REST API and SSE live
+stream. The default local `full` runtime mode also runs TxLINE ingestion and
+three background loops. On Railway the server stays in `web` mode while a
+bounded cron runner owns ingestion and lifecycle work only around matches.
+Chain access goes through one shared adapter (in-memory stub by default,
 `CHAIN_MODE=solana` for the real thing).
 
 Data flow: TxLINE events → `src/txline` (sequence-guarded apply into
-`fixtures` + in-process bus) → the bus fans out to the SSE `/api/live` route
-and the question scheduler (`live → settling → void` transitions) → the
-settlement executor evaluates settling questions from fixture stats, settles
-on chain, and scores predictions exactly once.
+`fixtures` + local bus + validated Postgres notification) → the scheduler and
+SSE `/api/live` route → settlement. Durable scheduler catch-up recovers missed
+bus events from fixture state. The web process holds its dedicated Postgres
+LISTEN connection only while at least one SSE client is connected.
 
 ```
 src/web         Vite + React + vite-plugin-pwa client
@@ -28,6 +27,7 @@ src/txline      TxLINE ingestion: replay + live clients, event apply, bus
 src/questions   Question templates, generation, scheduler, settlement
 src/predictions Prediction reconciler (retry/repair pending chain submits)
 src/chain       Chain adapter interface, in-memory stub, Solana adapter
+src/runner      Bounded, advisory-locked automatic match processor
 program/        Anchor program source (Rust)
 ```
 
@@ -44,7 +44,10 @@ mints a guest JWT via `POST /auth/guest/start`, then — sending
 data call — fetches `GET /api/fixtures/snapshot` for the fixture list,
 `GET /api/scores/snapshot/{fixtureId}` for each fixture's event history,
 and follows `GET /api/scores/stream` (SSE) for live events. A 401 re-mints
-the JWT once and retries. The exact wire shape is isolated in
+the JWT once and retries. Idle cron discovery fetches only the fixture list;
+per-fixture score fan-out and the stream start only when work is active. A
+dropped stream uses bounded reconnects with fresh snapshots before a terminal
+failure restarts the Railway job. The exact wire shape is isolated in
 `src/txline/schema.ts` + `src/txline/live-client.ts`; everything downstream
 sees validated `TxLineEvent` objects only.
 
@@ -88,6 +91,7 @@ and an explicit `AUTH_MODE=dev`; the remaining variables are optional.
 | `PRIVY_APP_ID` / `PRIVY_APP_SECRET` | — | Privy credentials (`AUTH_MODE=privy` only) |
 | `CHAIN_MODE` | stub | `solana` selects the real chain adapter |
 | `SOLANA_RPC_URL` / `HILO_PROGRAM_ID` | — | Solana adapter config (`CHAIN_MODE=solana` only) |
+| `MATCH_RUNNER_CHAIN_WRITES` | `disabled` | `enabled` permits runner chain writes only with `CHAIN_MODE=solana` |
 | `LLM_SELECTOR` / `OPENROUTER_API_KEY` / `OPENROUTER_MODEL` | off | Optional LLM question selector (background only) |
 
 ## Scripts
@@ -97,6 +101,7 @@ and an explicit `AUTH_MODE=dev`; the remaining variables are optional.
 | `pnpm dev` | Run Vite client + Hono API together (watch mode) |
 | `pnpm build` | Build the production client bundle into `dist/client` |
 | `pnpm start` | Run the production server (serves built client + API) |
+| `pnpm match-runner` | Run one bounded automatic match-processing invocation |
 | `pnpm test` | Run unit tests (`*.test.ts`) |
 | `pnpm test:integration` | Run integration tests (`*.int.test.ts`) against Postgres |
 | `pnpm lint` | ESLint |
@@ -207,7 +212,8 @@ Semantics worth knowing:
 
 ## Deploy (Railway)
 
-Two services: the **app** (this repo) and a Railway **Postgres**.
+Three services: the serverless **app**, the cron **match-runner**, and Railway
+**Postgres**.
 `railway.json` carries the config-as-code: Railpack build
 (`pnpm install --frozen-lockfile && pnpm build`), migrations as the
 pre-deploy command (`pnpm exec tsx src/db/migrate.ts`), start command
@@ -217,25 +223,36 @@ cannot scale horizontally.
 
 Environment variables per environment:
 
-| Variable | Demo env (now) | Production (idle) | Production (active match) |
+| Variable | Demo env | Production app | Production match-runner |
 |---|---|---|---|
 | `DATABASE_URL` | reference variable `${{Postgres.DATABASE_URL}}` | same | same |
-| `APP_RUNTIME_MODE` | `full` | `web` | `full` |
-| `AUTH_MODE` | `dev` | `privy` | `privy` |
+| `APP_RUNTIME_MODE` | `full` | `web` | unused |
+| `AUTH_MODE` | `dev` | `privy` | unused |
 | `NODE_ENV` | `development` — the dev auth stub refuses prod-ish values | `production` | `production` |
-| `TXLINE_MODE` | `replay` (bundled fixtures, zero creds) | `live` + TxLINE creds | `live` + TxLINE creds |
-| `PRIVY_APP_ID` / `PRIVY_APP_SECRET` | unset | required | required |
+| `TXLINE_MODE` | `replay` (bundled fixtures, zero creds) | unused | `live` + TxLINE creds |
+| `PRIVY_APP_ID` / `PRIVY_APP_SECRET` | unset | required | unused |
+| `MATCH_RUNNER_CHAIN_WRITES` | `disabled` | unused | `disabled` until Solana review |
 | `PORT` | Railway-injected | same | same |
 
-`APP_RUNTIME_MODE=full` preserves the single-process behavior: the app runs
-the HTTP server, TxLINE ingestion, question scheduler, prediction reconciler,
-and settlement executor. `APP_RUNTIME_MODE=web` runs only the HTTP server so
-Railway Serverless can sleep the app after an idle period. Web mode pauses all
-ingestion and background transitions, so switch production to `full` before an
-active match and redeploy. After the match is settled, switch back to `web`
-and redeploy to restore idle sleeping. Database connections opened by API
-requests close after 60 seconds of pool inactivity, leaving Railway's outbound
-idle window clear.
+Keep the Railway app permanently on `APP_RUNTIME_MODE=web`. Railway invokes the
+`match-runner` service every five minutes. A fixed session advisory lock
+prevents overlap; after initial TxLINE synchronization it exits after two idle
+checks, stays for fixtures starting within 40 minutes or active lifecycle work,
+and hands off after six hours. No runtime variable toggle or redeploy is needed
+for a match. The runner uses `railway.runner.json`; the app continues using
+`railway.json` with Serverless enabled.
+
+Runner chain writes are fail-closed. Keep
+`MATCH_RUNNER_CHAIN_WRITES=disabled` on Railway: ingestion and lifecycle
+transitions continue, but prediction reconciliation and settlement are skipped
+and settling-only questions do not keep the job awake. Enabling writes requires
+the explicit value `enabled` together with `CHAIN_MODE=solana`; the runner
+never falls back to the process-local stub.
+
+The current production environment still needs reviewed `TXLINE_MODE=live`
+and TxLINE credentials before real matches. Real settlement additionally needs
+a separate Solana configuration review. Replay mode only validates the runner
+lifecycle against bundled samples.
 
 For staging tests, start Postgres first, deploy the app with
 `APP_RUNTIME_MODE=full`, and run the test. Stop the app before Postgres when

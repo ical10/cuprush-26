@@ -82,6 +82,7 @@ export type TickResult = {
   questionsInserted: number;
   openedCount: number;
   lockedCount: number;
+  fixtureCatchUpCount: number;
   overdueSettlingCount: number;
 };
 
@@ -94,6 +95,8 @@ export type SchedulerOptions = {
 };
 
 export interface QuestionScheduler {
+  /** Subscribes to local fixture updates without starting a timer. */
+  subscribe(): void;
   start(): void;
   stop(): void;
   /** Runs one time-driven pass: generation + scheduled->open->locked + overdue scan. */
@@ -166,10 +169,53 @@ export function createQuestionScheduler(options: SchedulerOptions): QuestionSche
     return overdue.length;
   }
 
+  async function catchUpFixtureDrivenStatuses(now: Date): Promise<number> {
+    const currentFixtures = await db
+      .select({ id: fixtures.id, gameState: fixtures.gameState })
+      .from(fixtures);
+    let transitioned = 0;
+
+    for (const fixture of currentFixtures) {
+      if (fixture.gameState === "live" || fixture.gameState === "finished") {
+        const live = await db
+          .update(questions)
+          .set({ status: "live" })
+          .where(
+            and(eq(questions.fixtureId, fixture.id), eq(questions.status, "locked")),
+          )
+          .returning({ id: questions.id });
+        transitioned += live.length;
+      }
+
+      if (fixture.gameState === "finished") {
+        const settling = await db
+          .update(questions)
+          .set({ status: "settling", settlingAt: now })
+          .where(and(eq(questions.fixtureId, fixture.id), eq(questions.status, "live")))
+          .returning({ id: questions.id });
+        transitioned += settling.length;
+      }
+
+      if (VOID_GAME_STATES.includes(fixture.gameState)) {
+        for (const status of PRE_LIVE_STATUSES) {
+          const voided = await db
+            .update(questions)
+            .set({ status: "void" })
+            .where(and(eq(questions.fixtureId, fixture.id), eq(questions.status, status)))
+            .returning({ id: questions.id });
+          transitioned += voided.length;
+        }
+      }
+    }
+
+    return transitioned;
+  }
+
   async function tick(): Promise<TickResult> {
     const now = clock();
     const { fixturesGenerated, questionsInserted } = await generateForUpcomingFixtures();
     const { opened, locked } = await advanceTimeDrivenStatuses(now);
+    const fixtureCatchUpCount = await catchUpFixtureDrivenStatuses(now);
     const overdueSettlingCount = await scanOverdueSettling(now);
 
     return {
@@ -177,6 +223,7 @@ export function createQuestionScheduler(options: SchedulerOptions): QuestionSche
       questionsInserted,
       openedCount: opened,
       lockedCount: locked,
+      fixtureCatchUpCount,
       overdueSettlingCount,
     };
   }
@@ -201,12 +248,24 @@ export function createQuestionScheduler(options: SchedulerOptions): QuestionSche
   }
 
   return {
-    start() {
+    subscribe() {
+      if (unsubscribe) return;
       unsubscribe = onFixtureUpdate((update) => {
-        void handleFixtureUpdate(update);
+        void handleFixtureUpdate(update).catch((error: unknown) => {
+          console.error("Failed to handle fixture update", error);
+        });
       });
-      void tick();
-      timer = setInterval(() => void tick(), options.intervalMs ?? DEFAULT_TICK_INTERVAL_MS);
+    },
+    start() {
+      this.subscribe();
+      void tick().catch((error: unknown) => {
+        console.error("Question scheduler tick failed", error);
+      });
+      timer = setInterval(() => {
+        void tick().catch((error: unknown) => {
+          console.error("Question scheduler tick failed", error);
+        });
+      }, options.intervalMs ?? DEFAULT_TICK_INTERVAL_MS);
     },
     stop() {
       if (timer) clearInterval(timer);

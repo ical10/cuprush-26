@@ -12,6 +12,10 @@ import { createAuthAdapterFromEnv, type AuthAdapter } from "./auth/adapter";
 import type { DbProvider } from "./auth/middleware";
 import { createChainAdapterFromEnv, type ChainAdapter } from "../chain";
 import type { Database } from "../db/client";
+import {
+  createPostgresFixtureBridgeFromEnv,
+  type FixtureNotificationBridge,
+} from "../txline/postgres-bus";
 
 export type CreateAppOptions = {
   db?: Database;
@@ -19,6 +23,7 @@ export type CreateAppOptions = {
   /** Chain adapter shared with the prediction reconciler (see server.ts). */
   chain?: ChainAdapter;
   predictions?: PredictionRoutesOptions;
+  fixtureNotifications?: FixtureNotificationBridge | false;
 };
 
 export function createApp(options: CreateAppOptions = {}) {
@@ -47,9 +52,13 @@ export function createApp(options: CreateAppOptions = {}) {
   // CHAIN_MODE=solana selects the mainnet adapter (HITL skeleton, issue 13);
   // the in-memory stub is the default for dev and tests.
   const chain = options.chain ?? createChainAdapterFromEnv();
+  const fixtureNotifications =
+    options.fixtureNotifications === false
+      ? undefined
+      : (options.fixtureNotifications ?? createPostgresFixtureBridgeFromEnv());
 
   app.route("/api", healthRoute);
-  app.route("/api", createLiveRoute(getDb));
+  app.route("/api", createLiveRoute(getDb, fixtureNotifications));
   app.route("/api", createAccountRoutes(getDb, auth));
   app.route("/api", createLeaderboardRoute(getDb));
   app.route("/api", createQuestionsRoute(getDb));

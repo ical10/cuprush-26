@@ -2,11 +2,15 @@ import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
 import { testDatabaseUrl } from "../db/test/test-db";
 import * as schema from "../db/schema";
 import { createApp } from "./app";
 import { FIXTURE_UPDATE, fixtureBus, publishFixtureUpdate } from "../txline/bus";
+import {
+  createPostgresFixtureBridge,
+  FIXTURE_UPDATE_CHANNEL,
+} from "../txline/postgres-bus";
 
 // This integration test DB is shared with every other *.int.test.ts file in
 // the same run, so other fixtures may already exist. Every test here reads
@@ -225,5 +229,98 @@ describe("GET /api/live", () => {
     await waitUntil(() => fixtureBus.listenerCount(FIXTURE_UPDATE) === listenersBefore);
 
     expect(fixtureBus.listenerCount(FIXTURE_UPDATE)).toBe(listenersBefore);
+  });
+
+  it("relays a validated Postgres notification from the separate runner process", async () => {
+    const fixtureId = await insertFixture({ lastSeq: 0 });
+    const totalRows = await countFixtureRows();
+    const app = createApp({
+      db,
+      fixtureNotifications: createPostgresFixtureBridge({
+        createClient: () => postgres(testDatabaseUrl(), { max: 1 }),
+      }),
+    });
+    const res = await app.request("/api/live");
+    const reader = res.body!.getReader();
+
+    try {
+      await readOwnSnapshot(reader, fixtureId, totalRows);
+      const update = { fixtureId, seq: 1, gameState: "live" as const, stats: {} };
+      await db
+        .update(fixtures)
+        .set({ lastSeq: 1, gameState: "live" })
+        .where(eq(fixtures.id, fixtureId));
+      await sql.notify(FIXTURE_UPDATE_CHANNEL, JSON.stringify(update));
+
+      const [message] = await readMessages(reader, 1);
+      expect(message?.event).toBe("update");
+      expect(message?.id).toBe(`${fixtureId}:1`);
+      expect(JSON.parse(message!.data!)).toEqual(update);
+    } finally {
+      await reader.cancel();
+    }
+  });
+
+  it("closes SSE on bridge reconnect, heals from snapshot, and releases the final listener", async () => {
+    const fixtureId = await insertFixture({ lastSeq: 0 });
+    const totalRows = await countFixtureRows();
+    const listenersBefore = fixtureBus.listenerCount(FIXTURE_UPDATE);
+    let reconnect: (() => void) | undefined;
+    const unlisten = vi.fn(async () => {});
+    const end = vi.fn(async () => {});
+    const createClient = vi.fn(() => ({
+      listen: vi.fn(
+        async (
+          _channel: string,
+          _onNotify: (payload: string) => void,
+          onListen?: () => void,
+        ) => {
+          reconnect = onListen;
+          onListen?.();
+          return { unlisten };
+        },
+      ),
+      end,
+    }));
+    const app = createApp({
+      db,
+      fixtureNotifications: createPostgresFixtureBridge({ createClient }),
+    });
+    const firstResponse = await app.request("/api/live");
+    const secondResponse = await app.request("/api/live");
+    const firstReader = firstResponse.body!.getReader();
+    const secondReader = secondResponse.body!.getReader();
+
+    await readOwnSnapshot(firstReader, fixtureId, totalRows);
+    await readOwnSnapshot(secondReader, fixtureId, totalRows);
+    expect(createClient).toHaveBeenCalledOnce();
+
+    await firstReader.cancel();
+    await waitUntil(
+      () => fixtureBus.listenerCount(FIXTURE_UPDATE) === listenersBefore + 1,
+    );
+    expect(unlisten).not.toHaveBeenCalled();
+    expect(end).not.toHaveBeenCalled();
+
+    const secondClosed = secondReader.read();
+    reconnect?.();
+    expect(await secondClosed).toMatchObject({ done: true });
+    await waitUntil(() => unlisten.mock.calls.length === 1 && end.mock.calls.length === 1);
+
+    await db
+      .update(fixtures)
+      .set({ lastSeq: 2, gameState: "live" })
+      .where(eq(fixtures.id, fixtureId));
+
+    const reconnectResponse = await app.request("/api/live");
+    const reconnectReader = reconnectResponse.body!.getReader();
+    const healed = await readOwnSnapshot(reconnectReader, fixtureId, totalRows);
+    expect(healed.id).toBe(`${fixtureId}:2`);
+    expect(JSON.parse(healed.data!)).toMatchObject({ fixtureId, seq: 2 });
+    expect(createClient).toHaveBeenCalledTimes(2);
+
+    await reconnectReader.cancel();
+    await waitUntil(() => unlisten.mock.calls.length === 2 && end.mock.calls.length === 2);
+    await waitUntil(() => fixtureBus.listenerCount(FIXTURE_UPDATE) === listenersBefore);
   });
 });
