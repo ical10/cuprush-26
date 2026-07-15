@@ -1,11 +1,17 @@
 import type { Database } from "../db/client";
+import type { FixtureUpdatePublisher } from "./bus";
 import { createReplayTxLineClient } from "./replay-client";
 import { createLiveTxLineClient } from "./live-client";
 
 export type TxLineMode = "replay" | "live";
 
 export interface TxLineClient {
-  start(): Promise<void>;
+  /** Discovers fixtures without fetching per-fixture scores or opening the stream. */
+  prepare(signal?: AbortSignal): Promise<void>;
+  /** Applies score snapshots and opens the event stream. */
+  start(signal?: AbortSignal): Promise<void>;
+  /** Resolves only when a background live stream exhausts its reconnect budget. */
+  waitForFailure(): Promise<Error>;
   stop(): Promise<void>;
 }
 
@@ -19,6 +25,7 @@ export type CreateTxLineClientOptions = {
   env?: NodeJS.ProcessEnv;
   fixturesDir?: string;
   intervalMs?: number;
+  publishUpdate?: FixtureUpdatePublisher;
 };
 
 /** Picks the replay or live TxLINE client by TXLINE_MODE (default: replay). */
@@ -26,12 +33,17 @@ export function createTxLineClient(options: CreateTxLineClientOptions): TxLineCl
   const mode = options.mode ?? txLineMode(options.env ?? process.env);
 
   if (mode === "live") {
-    return createLiveTxLineClient({ db: options.db, env: options.env ?? process.env });
+    return createLiveTxLineClient({
+      db: options.db,
+      env: options.env ?? process.env,
+      publishUpdate: options.publishUpdate,
+    });
   }
 
   return createReplayTxLineClient({
     db: options.db,
     fixturesDir: options.fixturesDir,
     intervalMs: options.intervalMs,
+    publishUpdate: options.publishUpdate,
   });
 }
