@@ -8,8 +8,19 @@ import type {
   Question,
 } from "./types";
 
+// The bearer token source. Dev mode reads the `dev:<name>` string from
+// localStorage (the default below). Privy mode overrides this with the SDK's
+// async getAccessToken() — see PrivyAuthProvider — since real Privy tokens are
+// short-lived (~1h) and must be fetched fresh right before each request.
+type TokenProvider = () => Promise<string | null>;
+let getAuthToken: TokenProvider = async () => getToken();
+
+export function setAuthTokenProvider(provider: TokenProvider): void {
+  getAuthToken = provider;
+}
+
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
-  const token = getToken();
+  const token = await getAuthToken();
   const headers = new Headers(init.headers);
   headers.set("Content-Type", "application/json");
   if (token) headers.set("Authorization", `Bearer ${token}`);
@@ -73,8 +84,4 @@ export function revokeDelegation(): Promise<{ delegationRevokedAt: string | null
 
 export function fetchLeaderboard(): Promise<LeaderboardRow[]> {
   return request("/leaderboard");
-}
-
-export function logout(): Promise<void> {
-  return request("/logout", { method: "POST" });
 }

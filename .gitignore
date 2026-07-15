@@ -13,4 +13,6 @@ tasks/
 .mcp.json
 .txline-devnet-key.json
 
+.claude/worktrees/
+.codex/
 plans/
