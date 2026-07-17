@@ -8,15 +8,26 @@
 //! predict early or late; `settle_question` refuses double settlement.
 //!
 //! Build and devnet deploy are HITL (issue 13). The declared id is a
-//! placeholder replaced by `anchor keys sync` at deploy time. For an
-//! inter-fixture question the authority proves the benchmark through
-//! TxOracle (Equal predicate) before calling `create_question` and stores
-//! the proven value in `benchmark`; `settle_question` then settles the new
-//! fixture against that stored benchmark.
+//! placeholder replaced by `anchor keys sync` at deploy time. There is no
+//! on-chain oracle: a single trusted `AUTHORITY` (allowlisted on
+//! `create_question`) supplies both the benchmark value for inter-fixture
+//! questions and the settlement `result`. The program does not verify those
+//! values against any external stats source — it only enforces who may write
+//! (the authority), when settlement may happen (at/after `locks_at`), and
+//! that each question settles exactly once from the Open state.
 
 use anchor_lang::prelude::*;
 
 declare_id!("9u7uuj7S8kMon564b4TA8Gc7RaYXSC5QgjDz8fFgmGCU");
+
+/// The single trusted key allowed to create (and, via `has_one`, settle)
+/// questions. There is no on-chain oracle; this key is the whole trust root.
+/// Injected at build time from CUPRUSH_AUTHORITY_PUBKEY (the PUBLIC key of
+/// the server wallet — never the private key); rotation = rebuild + deploy.
+pub const AUTHORITY: Pubkey = Pubkey::from_str_const(env!(
+    "CUPRUSH_AUTHORITY_PUBKEY",
+    "set CUPRUSH_AUTHORITY_PUBKEY to the server wallet's public key before building"
+));
 
 pub const QUESTION_SEED: &[u8] = b"question";
 pub const PREDICTION_SEED: &[u8] = b"prediction";
@@ -47,9 +58,10 @@ pub mod cuprush {
                 benchmark_fixture_id.len() <= MAX_FIXTURE_ID_LEN,
                 HiLoError::FieldTooLong
             );
-            // An inter-fixture question is only creatable with its proven
-            // benchmark; an unprovable benchmark must fall back to an
-            // intra-fixture template off-chain instead.
+            // An inter-fixture question is only creatable with an
+            // authority-supplied benchmark value; a question whose benchmark
+            // cannot be supplied must fall back to an intra-fixture template
+            // off-chain instead.
             require!(args.benchmark.is_some(), HiLoError::MissingBenchmark);
         }
 
@@ -98,15 +110,22 @@ pub mod cuprush {
         Ok(())
     }
 
-    /// Settles the question exactly once. The authority derives `result`
-    /// from TxOracle-proven stats (for inter-fixture questions, validating
-    /// the new fixture against the stored benchmark) off-chain; a repeated
-    /// call is refused so a retry must read the existing on-chain result.
+    /// Settles the question exactly once. The trusted authority supplies
+    /// `result` off-chain; the program does not prove it against any oracle
+    /// or external stats source. It enforces only that the caller is the
+    /// authority (`has_one`), that the question is still Open (so a Settled
+    /// or Void question can never be settled, and a retry must read the
+    /// existing on-chain result), and that settlement happens no earlier than
+    /// `locks_at`.
     pub fn settle_question(ctx: Context<SettleQuestion>, result: QuestionResult) -> Result<()> {
         let question = &mut ctx.accounts.question;
         require!(
-            question.status != QuestionStatus::Settled,
-            HiLoError::AlreadySettled
+            question.status == QuestionStatus::Open,
+            HiLoError::QuestionNotOpen
+        );
+        require!(
+            Clock::get()?.unix_timestamp >= question.locks_at,
+            HiLoError::BeforeLock
         );
 
         question.result = Some(result);
@@ -127,7 +146,8 @@ pub struct CreateQuestionArgs {
     pub operator: Operator,
     pub comparison: Comparison,
     pub threshold: Option<i64>,
-    /// Proven benchmark value (required when benchmark_fixture_id is set).
+    /// Authority-supplied benchmark value (required when benchmark_fixture_id
+    /// is set). Trusted, not proven on-chain.
     pub benchmark: Option<i64>,
     pub opens_at: i64,
     pub locks_at: i64,
@@ -144,7 +164,7 @@ pub struct CreateQuestion<'info> {
         bump,
     )]
     pub question: Account<'info, Question>,
-    #[account(mut)]
+    #[account(mut, address = AUTHORITY @ HiLoError::UnauthorizedCreator)]
     pub authority: Signer<'info>,
     pub system_program: Program<'info, System>,
 }
@@ -280,4 +300,8 @@ pub enum HiLoError {
     AlreadySettled,
     #[msg("only the question authority may settle it")]
     UnauthorizedSettlement,
+    #[msg("only the program authority may create questions")]
+    UnauthorizedCreator,
+    #[msg("settlement is not allowed before locks_at")]
+    BeforeLock,
 }

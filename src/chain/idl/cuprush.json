@@ -311,6 +311,16 @@
       "code": 6007,
       "name": "UnauthorizedSettlement",
       "msg": "only the question authority may settle it"
+    },
+    {
+      "code": 6008,
+      "name": "UnauthorizedCreator",
+      "msg": "only the program authority may create questions"
+    },
+    {
+      "code": 6009,
+      "name": "BeforeLock",
+      "msg": "settlement is not allowed before locks_at"
     }
   ],
   "types": [

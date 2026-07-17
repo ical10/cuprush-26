@@ -331,8 +331,10 @@ export function createSolanaChainAdapter(
 
   function decodeQuestion(pda: string, data: Buffer): ChainQuestion {
     const raw = coder.accounts.decode<RawQuestion>("Question", data);
+    const statusName = variantName(raw.status);
     return {
       pda,
+      authority: raw.authority.toBase58(),
       ruleHash: Buffer.from(raw.rule_hash).toString("hex"),
       fixtureId: raw.fixture_id,
       benchmarkFixtureId: raw.benchmark_fixture_id,
@@ -349,7 +351,12 @@ export function createSolanaChainAdapter(
       benchmarkValue: raw.benchmark === null ? null : raw.benchmark.toNumber(),
       opensAt: new Date(raw.opens_at.toNumber() * 1000),
       locksAt: new Date(raw.locks_at.toNumber() * 1000),
-      status: variantName(raw.status) === "Open" ? "open" : "settled",
+      status:
+        statusName === "Open"
+          ? "open"
+          : statusName === "Void"
+            ? "void"
+            : "settled",
       result:
         raw.result === null
           ? null
@@ -435,6 +442,7 @@ export function createSolanaChainAdapter(
   }
 
   return {
+    authorityPubkey: authority.publicKey.toBase58(),
     deriveQuestionPda,
     deriveBatchPda,
 

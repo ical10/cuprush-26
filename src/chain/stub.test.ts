@@ -74,6 +74,14 @@ describe("stub createQuestion", () => {
     });
   });
 
+  it("stamps its own authority pubkey on the created question", async () => {
+    const adapter = createStubChainAdapter({ clock });
+    const { pda } = await adapter.createQuestion(rule());
+    const question = await adapter.getQuestion(pda);
+    expect(question?.authority).toBe(adapter.authorityPubkey);
+    expect(adapter.authorityPubkey).toMatch(BASE58);
+  });
+
   it("refuses to create the same rule twice (account already in use)", async () => {
     const adapter = createStubChainAdapter({ clock });
     await adapter.createQuestion(rule());
