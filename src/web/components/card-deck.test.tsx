@@ -134,6 +134,70 @@ describe("CardDeck batching", () => {
     expect(within(card).queryByRole("button")).not.toBeInTheDocument();
   });
 
+  it("hands the pending answer to the shell when a guest signs in to save", async () => {
+    fetchQuestions.mockResolvedValue([question("q1"), question("q2")]);
+    const onNavigateAuth = vi.fn();
+    const user = userEvent.setup();
+    // No token: the first answer opens the gate instead of recording.
+    render(
+      <AuthProvider>
+        <CardDeck onNavigateAuth={onNavigateAuth} />
+      </AuthProvider>,
+    );
+
+    await screen.findByText("Q q1?");
+    await user.click(screen.getByRole("button", { name: "Yes" }));
+    await user.click(await screen.findByRole("button", { name: "Sign in to save" }));
+
+    // The pick rides out to the shell instead of a stale replay closure.
+    expect(onNavigateAuth).toHaveBeenCalledWith({ questionId: "q1", outcome: "yes" });
+  });
+
+  it("replays the lifted answer once on remount, skipping that card without a network call", async () => {
+    fetchQuestions.mockResolvedValue([question("q1"), question("q2")]);
+    submitPredictionBatch.mockResolvedValue({ chainStatus: "confirmed" });
+    const user = userEvent.setup();
+    // The remounted deck is signed in (auth just completed).
+    setToken("dev:tester");
+    const onConsumed = vi.fn();
+
+    const first = render(
+      <AuthProvider>
+        <CardDeck
+          onNavigateAuth={() => {}}
+          initialAnswer={{ questionId: "q1", outcome: "yes" }}
+          onInitialAnswerConsumed={onConsumed}
+        />
+      </AuthProvider>,
+    );
+
+    // q1 is recorded silently and skipped: the deck opens on q2.
+    await screen.findByText("Q q2?");
+    expect(screen.queryByText("Q q1?")).not.toBeInTheDocument();
+    expect(onConsumed).toHaveBeenCalledTimes(1);
+    expect(submitPredictionBatch).not.toHaveBeenCalled();
+
+    // The replayed pick sits in the same local batch as a normal swipe.
+    await user.click(screen.getByRole("button", { name: "No" }));
+    await user.click(await screen.findByRole("button", { name: "Lock my picks" }));
+    await waitFor(() => expect(submitPredictionBatch).toHaveBeenCalledTimes(1));
+    expect(submitPredictionBatch).toHaveBeenCalledWith([
+      { questionId: "q1", outcome: "yes" },
+      { questionId: "q2", outcome: "no" },
+    ]);
+
+    // A later remount without the prop (shell already cleared it) starts fresh.
+    first.unmount();
+    submitPredictionBatch.mockClear();
+    render(
+      <AuthProvider>
+        <CardDeck onNavigateAuth={() => {}} />
+      </AuthProvider>,
+    );
+    await screen.findByText("Q q1?");
+    expect(submitPredictionBatch).not.toHaveBeenCalled();
+  });
+
   it("disables the rail and the card while the sign-in gate is open", async () => {
     fetchQuestions.mockResolvedValue([question("q1")]);
     const user = userEvent.setup();

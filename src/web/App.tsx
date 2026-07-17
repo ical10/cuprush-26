@@ -10,6 +10,7 @@ import { ProfileScreen } from "./components/profile-screen";
 import { ResultScreen } from "./components/result-screen";
 import { hashForScreen, screenFromHash } from "./lib/routes";
 import type { Screen } from "./lib/routes";
+import type { BatchAnswer } from "./lib/types";
 
 function useHashScreen(): [Screen, (screen: Screen) => void] {
   const [screen, setScreen] = useState<Screen>(() =>
@@ -32,18 +33,18 @@ function useHashScreen(): [Screen, (screen: Screen) => void] {
 
 function AppShell() {
   const [screen, navigate] = useHashScreen();
-  const afterAuth = useRef<(() => void) | null>(null);
+  // The guest's pending pick lives here, not in the deck: navigating to auth
+  // unmounts CardDeck, so the answer has to survive on the shell and ride back
+  // into the freshly mounted deck as a prop.
+  const pendingAnswer = useRef<BatchAnswer | null>(null);
 
-  function goToAuth(after: () => void) {
-    afterAuth.current = after;
+  function goToAuth(pending: BatchAnswer) {
+    pendingAnswer.current = pending;
     navigate("auth");
   }
 
   function handleAuthDone() {
-    const callback = afterAuth.current;
-    afterAuth.current = null;
     navigate("deck");
-    callback?.();
   }
 
   return (
@@ -58,7 +59,15 @@ function AppShell() {
       </header>
 
       <main className="app-main">
-        {screen === "deck" && <CardDeck onNavigateAuth={goToAuth} />}
+        {screen === "deck" && (
+          <CardDeck
+            onNavigateAuth={goToAuth}
+            initialAnswer={pendingAnswer.current}
+            onInitialAnswerConsumed={() => {
+              pendingAnswer.current = null;
+            }}
+          />
+        )}
         {screen === "live" && <LiveScreen />}
         {screen === "result" && <ResultScreen />}
         {screen === "leaderboard" && <LeaderboardScreen />}

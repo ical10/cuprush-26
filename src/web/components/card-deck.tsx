@@ -11,7 +11,9 @@ import { capitalizeOutcome } from "../lib/outcome-labels";
 import stadiumBg from "../assets/stadium-bg.jpg";
 
 type Props = {
-  onNavigateAuth(after: () => void): void;
+  onNavigateAuth(pending: BatchAnswer): void;
+  initialAnswer?: BatchAnswer | null;
+  onInitialAnswerConsumed?(): void;
 };
 
 type SubmitState = "idle" | "submitting" | "done" | "failed";
@@ -46,7 +48,7 @@ export function CardDeck(props: Props) {
   );
 }
 
-function Deck({ onNavigateAuth }: Props) {
+function Deck({ onNavigateAuth, initialAnswer, onInitialAnswerConsumed }: Props) {
   const { isAuthenticated } = useAuth();
   const [questions, setQuestions] = useState<Question[] | null>(null);
   const [index, setIndex] = useState(0);
@@ -58,6 +60,7 @@ function Deck({ onNavigateAuth }: Props) {
   const [submitState, setSubmitState] = useState<SubmitState>("idle");
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const consumedInitial = useRef(false);
 
   // Deck = open questions the user hasn't already answered. Predictions are
   // durable server-side, so on reload we subtract the ones this user already
@@ -74,6 +77,21 @@ function Deck({ onNavigateAuth }: Props) {
       })
       .catch(() => setError("Could not load questions right now."));
   }, [isAuthenticated]);
+
+  // A guest's pending pick, lifted to the shell across the auth screen, replays
+  // once into the remounted deck. It joins the same local accumulation as a
+  // normal swipe (no network call) and is consumed upstream so a later remount
+  // never re-records it.
+  useEffect(() => {
+    if (consumedInitial.current) return;
+    if (!questions || !initialAnswer || !isAuthenticated) return;
+    consumedInitial.current = true;
+    onInitialAnswerConsumed?.();
+    const pending = questions.find((q) => q.id === initialAnswer.questionId);
+    if (!pending) return;
+    setAnswers((prev) => [...prev, { questionId: pending.id, outcome: initialAnswer.outcome }]);
+    setIndex((i) => i + 1);
+  }, [questions, initialAnswer, isAuthenticated, onInitialAnswerConsumed]);
 
   const current = questions?.[index] ?? null;
 
@@ -95,12 +113,7 @@ function Deck({ onNavigateAuth }: Props) {
 
   function handleSignIn() {
     if (!current || !pendingOutcome) return;
-    const question = current;
-    const outcome = pendingOutcome;
-    onNavigateAuth(() => {
-      setPendingOutcome(null);
-      record(question, outcome);
-    });
+    onNavigateAuth({ questionId: current.id, outcome: pendingOutcome });
   }
 
   async function submit() {
