@@ -87,4 +87,68 @@ describe("renderCopy", () => {
       "Will Argentina score exactly 2 more goals than Brazil?",
     );
   });
+
+  it("renders a last-10 aggregate higher/lower question with its metric label", () => {
+    const copy = renderCopy(
+      question({
+        template: "total_corners_last10",
+        statKey1: "home.full_time.corners",
+        statKey2: "away.full_time.corners",
+        operator: "add",
+        threshold: null,
+        benchmarkValue: 9,
+      }),
+      fixture,
+    );
+    expect(copy.text).toBe(
+      "Last 10 matches averaged 9 corners. Will this match finish Higher or Lower?",
+    );
+    expect(copy.outcomes).toEqual(["higher", "lower"]);
+  });
+
+  it("renders a team last-10 goals benchmark question", () => {
+    const copy = renderCopy(
+      question({
+        template: "team_goals_last10_home",
+        statKey1: "home.full_time.goals",
+        statKey2: "benchmark",
+        threshold: null,
+        benchmarkValue: 2,
+      }),
+      fixture,
+    );
+    expect(copy.text).toBe(
+      "Will Argentina score more goals than their last-10 average (2)?",
+    );
+    expect(copy.outcomes).toEqual(["yes", "no"]);
+  });
+
+  it("renders the second-half vs first-half goals question", () => {
+    const copy = renderCopy(
+      question({
+        template: "period_goals_intra",
+        statKey1: "total.second_half.goals",
+        statKey2: "total.first_half.goals",
+        period: null,
+      }),
+      fixture,
+    );
+    expect(copy.text).toBe("Will second-half goals beat first-half goals?");
+    expect(copy.outcomes).toEqual(["higher", "lower"]);
+  });
+
+  it("renders the red-card occurrence question", () => {
+    const copy = renderCopy(
+      question({
+        template: "red_card_occurrence",
+        statKey1: "total.full_time.redCards",
+        statKey2: "benchmark",
+        threshold: null,
+        benchmarkValue: 0,
+      }),
+      fixture,
+    );
+    expect(copy.text).toBe("Will there be a red card in this match?");
+    expect(copy.outcomes).toEqual(["yes", "no"]);
+  });
 });

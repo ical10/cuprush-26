@@ -1,6 +1,7 @@
 import { and, desc, eq, lt, or } from "drizzle-orm";
 import type { Database } from "../db/client";
 import { fixtures, questions, type FixtureStage } from "../db/schema";
+import { lastMatchesAverages, teamLastMatchesGoalsAverage } from "./benchmarks";
 import { computeRuleHash } from "./rule-hash";
 import { HARD_CAP_TOTAL_CARDS, secondaryBudget } from "./stage-budget";
 import { TEMPLATES } from "./templates";
@@ -18,12 +19,17 @@ const THIRTY_MINUTES_MS = 30 * 60 * 1000;
  * benchmark, red sparingly.
  */
 export const SECONDARY_CATEGORIES: { category: string; templateIds: TemplateId[] }[] = [
-  { category: "corners", templateIds: ["corners_inter_benchmark", "corners_intra"] },
-  { category: "yellow_cards", templateIds: ["yellow_cards_intra"] },
-  { category: "red_cards", templateIds: ["red_cards_intra"] },
+  { category: "corners_benchmark", templateIds: ["total_corners_last10", "corners_inter_benchmark"] },
+  { category: "corners_intra", templateIds: ["corners_intra"] },
+  { category: "yellow_cards_benchmark", templateIds: ["total_yellow_cards_last10"] },
+  { category: "yellow_cards_intra", templateIds: ["yellow_cards_intra"] },
+  { category: "red_cards", templateIds: ["red_card_occurrence", "red_cards_intra"] },
   { category: "goals_margin", templateIds: ["goals_exact_margin"] },
   { category: "period_corners", templateIds: ["period_corners_intra"] },
-  { category: "team_goals_benchmark", templateIds: ["team_goals_inter_benchmark"] },
+  { category: "period_goals", templateIds: ["period_goals_intra"] },
+  { category: "total_goals", templateIds: ["total_goals_last10"] },
+  { category: "team_goals_home", templateIds: ["team_goals_last10_home", "team_goals_inter_benchmark"] },
+  { category: "team_goals_away", templateIds: ["team_goals_last10_away"] },
 ];
 
 /**
@@ -127,9 +133,20 @@ export async function resolveGenerationContext(
   db: Database,
   fixture: FixtureRow,
 ): Promise<GenerationContext> {
-  const [benchmarkFixture, teamBenchmark] = await Promise.all([
+  const [benchmarkFixture, teamBenchmark, lastTen, homeLastTen, awayLastTen] = await Promise.all([
     findBenchmarkFixture(db, fixture),
     findTeamBenchmark(db, fixture),
+    lastMatchesAverages(db, { before: fixture.startsAt, excludeFixtureId: fixture.id }),
+    teamLastMatchesGoalsAverage(db, {
+      team: fixture.homeTeam,
+      before: fixture.startsAt,
+      excludeFixtureId: fixture.id,
+    }),
+    teamLastMatchesGoalsAverage(db, {
+      team: fixture.awayTeam,
+      before: fixture.startsAt,
+      excludeFixtureId: fixture.id,
+    }),
   ]);
 
   return {
@@ -138,6 +155,8 @@ export async function resolveGenerationContext(
     awayTeam: fixture.awayTeam,
     benchmarkFixture,
     teamBenchmark,
+    lastTen,
+    teamLastTen: { home: homeLastTen, away: awayLastTen },
   };
 }
 

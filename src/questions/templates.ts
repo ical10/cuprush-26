@@ -268,6 +268,155 @@ const teamGoalsInterBenchmark: TemplateDefinition = {
   },
 };
 
+// --- aggregate (last-10) benchmarks --------------------------------------
+
+/**
+ * Higher/Lower against the average of the last 10 finished fixtures. Mirrors
+ * corners_inter_benchmark's sentinel-free "add both sides, compare to the
+ * stored benchmark_value" shape, but the anchor is an aggregate average
+ * (benchmark_fixture_id NULL) instead of a single reference fixture.
+ */
+function totalLast10Benchmark(
+  id: TemplateId,
+  stat: "goals" | "corners" | "yellowCards",
+  metric: keyof NonNullable<GenerationContext["lastTen"]>,
+): TemplateDefinition {
+  return {
+    id,
+    tier: "inter",
+    wordingVariantCount: 1,
+    isAvailable: (ctx) => Boolean(ctx.lastTen?.[metric]),
+    build(ctx) {
+      const benchmark = ctx.lastTen?.[metric];
+      if (!benchmark) {
+        throw new Error(`${id}: no last-10 ${stat} aggregate available`);
+      }
+      const rule: RuleFields = {
+        statKey1: `home.full_time.${stat}`,
+        statKey2: `away.full_time.${stat}`,
+        period: "full_time",
+        operator: "add",
+        comparison: "greater_than",
+        threshold: null,
+        benchmarkFixtureId: null,
+        benchmarkValue: benchmark.average,
+      };
+      const copy: RenderedCopy = {
+        question: `Last 10 matches averaged ${benchmark.average} ${STAT_LABEL[stat]}. Will this match finish Higher or Lower?`,
+        outcomes: ["Higher", "Lower"],
+      };
+      return { templateId: id, tier: "inter", wordingVariant: 0, rule, copy };
+    },
+  };
+}
+
+const totalGoalsLast10 = totalLast10Benchmark("total_goals_last10", "goals", "totalGoals");
+const totalCornersLast10 = totalLast10Benchmark("total_corners_last10", "corners", "totalCorners");
+const totalYellowCardsLast10 = totalLast10Benchmark(
+  "total_yellow_cards_last10",
+  "yellowCards",
+  "totalYellowCards",
+);
+
+/**
+ * Yes/No: does this fixture's given side outscore its own last-10 goals
+ * average? Mirrors team_goals_inter_benchmark's "benchmark" sentinel operand
+ * (side goals minus the stored average, greater than 0), but anchored on an
+ * aggregate average instead of a single previous match. Distinct home/away
+ * template ids keep the one-template-one-question dedup intact.
+ */
+function teamGoalsLast10(id: TemplateId, side: Side): TemplateDefinition {
+  return {
+    id,
+    tier: "inter",
+    wordingVariantCount: 1,
+    isAvailable: (ctx) => Boolean(ctx.teamLastTen?.[side]),
+    build(ctx) {
+      const benchmark = ctx.teamLastTen?.[side];
+      if (!benchmark) {
+        throw new Error(`${id}: no last-10 goals aggregate for ${side}`);
+      }
+      const rule: RuleFields = {
+        statKey1: `${side}.full_time.goals`,
+        statKey2: "benchmark",
+        period: "full_time",
+        operator: "subtract",
+        comparison: "greater_than",
+        threshold: null,
+        benchmarkFixtureId: null,
+        benchmarkValue: benchmark.average,
+      };
+      const name = teamName(ctx, side);
+      const copy: RenderedCopy = {
+        question: `Will ${name} score more goals than their last-10 average (${benchmark.average})?`,
+        outcomes: ["Yes", "No"],
+      };
+      return { templateId: id, tier: "inter", wordingVariant: 0, rule, copy };
+    },
+  };
+}
+
+const teamGoalsLast10Home = teamGoalsLast10("team_goals_last10_home", "home");
+const teamGoalsLast10Away = teamGoalsLast10("team_goals_last10_away", "away");
+
+// --- period comparison (goals) -------------------------------------------
+
+const periodGoalsIntra: TemplateDefinition = {
+  id: "period_goals_intra",
+  tier: "intra",
+  wordingVariantCount: 1,
+  isAvailable: () => true,
+  build() {
+    const rule: RuleFields = {
+      statKey1: "total.second_half.goals",
+      statKey2: "total.first_half.goals",
+      // Two different periods are being compared — a single `period`
+      // column can't represent that, so it's left null.
+      period: null,
+      operator: "subtract",
+      comparison: "greater_than",
+      threshold: 0,
+      benchmarkFixtureId: null,
+      benchmarkValue: null,
+    };
+    const copy: RenderedCopy = {
+      question: "Will second-half goals beat first-half goals?",
+      outcomes: ["Higher", "Lower"],
+    };
+    return { templateId: "period_goals_intra", tier: "intra", wordingVariant: 0, rule, copy };
+  },
+};
+
+// --- red card occurrence -------------------------------------------------
+
+// Yes/No: any red card in the match. The "benchmark" sentinel injects a
+// constant 0 second operand (redCards - 0 > 0), the cleanest encoding within
+// evaluate.ts's two-operand model — see the report. No benchmark data needed,
+// so it's always available and supersedes red_cards_intra in priority.
+const redCardOccurrence: TemplateDefinition = {
+  id: "red_card_occurrence",
+  tier: "intra",
+  wordingVariantCount: 1,
+  isAvailable: () => true,
+  build() {
+    const rule: RuleFields = {
+      statKey1: "total.full_time.redCards",
+      statKey2: "benchmark",
+      period: "full_time",
+      operator: "subtract",
+      comparison: "greater_than",
+      threshold: null,
+      benchmarkFixtureId: null,
+      benchmarkValue: 0,
+    };
+    const copy: RenderedCopy = {
+      question: "Will there be a red card in this match?",
+      outcomes: ["Yes", "No"],
+    };
+    return { templateId: "red_card_occurrence", tier: "intra", wordingVariant: 0, rule, copy };
+  },
+};
+
 // --- registry ---------------------------------------------------------------
 
 export const TEMPLATES: Record<TemplateId, TemplateDefinition> = {
@@ -279,6 +428,13 @@ export const TEMPLATES: Record<TemplateId, TemplateDefinition> = {
   team_goals_inter_benchmark: teamGoalsInterBenchmark,
   yellow_cards_intra: yellowCardsIntra,
   red_cards_intra: redCardsIntra,
+  total_goals_last10: totalGoalsLast10,
+  total_corners_last10: totalCornersLast10,
+  total_yellow_cards_last10: totalYellowCardsLast10,
+  team_goals_last10_home: teamGoalsLast10Home,
+  team_goals_last10_away: teamGoalsLast10Away,
+  period_goals_intra: periodGoalsIntra,
+  red_card_occurrence: redCardOccurrence,
 };
 
 export const TEMPLATE_IDS = Object.keys(TEMPLATES) as TemplateId[];
@@ -300,6 +456,13 @@ export const TEMPLATE_OUTCOMES: Record<
   team_goals_inter_benchmark: ["yes", "no"],
   yellow_cards_intra: ["higher", "lower"],
   red_cards_intra: ["higher", "lower"],
+  total_goals_last10: ["higher", "lower"],
+  total_corners_last10: ["higher", "lower"],
+  total_yellow_cards_last10: ["higher", "lower"],
+  team_goals_last10_home: ["yes", "no"],
+  team_goals_last10_away: ["yes", "no"],
+  period_goals_intra: ["higher", "lower"],
+  red_card_occurrence: ["yes", "no"],
 };
 
 /** Allowed outcomes for a stored `questions.template` value; null if unknown. */

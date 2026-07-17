@@ -120,23 +120,32 @@ describe("selectQuestions", () => {
     expect(result.source).toBe("fallback");
   });
 
-  // Every stage's secondary budget (9/9/11/11, see stage-budget.ts) now
-  // exceeds SECONDARY_TEMPLATE_IDS.length (7) — the same bound the response
-  // schema caps `selections` at — so an in-schema LLM response can no
-  // longer exceed the stage budget. This will bind again once more
-  // secondary templates are registered (plans/ten-question-generation.md
-  // Task 3/4).
-  it.skip("falls back when the selection exceeds the stage's secondary budget", async () => {
+  // With 14 secondary templates registered (Task 3/4), the response schema's
+  // `selections` cap (SECONDARY_TEMPLATE_IDS.length) again exceeds the group
+  // stage's secondary budget of 9 — so an in-schema response can once more
+  // overshoot the budget and must fall back. validateSemantics checks the
+  // budget before availability, so distinct real template ids suffice here.
+  it("falls back when the selection exceeds the stage's secondary budget", async () => {
     const fetchImpl = vi.fn().mockResolvedValue(
       openRouterResponse([
         { templateId: "corners_intra", wordingVariant: 0 },
+        { templateId: "corners_inter_benchmark", wordingVariant: 0 },
+        { templateId: "period_corners_intra", wordingVariant: 0 },
+        { templateId: "period_goals_intra", wordingVariant: 0 },
         { templateId: "goals_exact_margin", wordingVariant: 0 },
+        { templateId: "red_card_occurrence", wordingVariant: 0 },
+        { templateId: "total_goals_last10", wordingVariant: 0 },
+        { templateId: "total_corners_last10", wordingVariant: 0 },
+        { templateId: "total_yellow_cards_last10", wordingVariant: 0 },
+        { templateId: "team_goals_last10_home", wordingVariant: 0 },
       ]),
     );
 
     const result = await selectQuestions(ctx, "group", { env: enabledEnv, fetchImpl });
 
     expect(result.source).toBe("fallback");
+    // Retries once (over-budget both times) before falling back.
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
 
   it("falls back after a timeout, retrying once first", async () => {

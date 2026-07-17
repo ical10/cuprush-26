@@ -180,6 +180,72 @@ describe("evaluateQuestion", () => {
     });
   });
 
+  describe("total_goals_last10 (higher/lower/push, aggregate benchmark)", () => {
+    const rule: EvaluateRule = {
+      statKey1: "home.full_time.goals",
+      statKey2: "away.full_time.goals",
+      operator: "add",
+      comparison: "greater_than",
+      threshold: null,
+      benchmarkValue: 3,
+    };
+
+    it("higher when total goals beat the last-10 average", () => {
+      const stats: FixtureStats = { full_time: { home: teamStats(2), away: teamStats(2) } };
+      expect(evaluateQuestion("total_goals_last10", rule, stats)).toEqual({
+        status: "ready",
+        result: "higher",
+      });
+    });
+
+    it("lower when total goals fall short of the last-10 average", () => {
+      const stats: FixtureStats = { full_time: { home: teamStats(1), away: teamStats(1) } };
+      expect(evaluateQuestion("total_goals_last10", rule, stats)).toEqual({
+        status: "ready",
+        result: "lower",
+      });
+    });
+
+    it("push on an exact tie with the last-10 average", () => {
+      const stats: FixtureStats = { full_time: { home: teamStats(2), away: teamStats(1) } };
+      expect(evaluateQuestion("total_goals_last10", rule, stats)).toEqual({
+        status: "ready",
+        result: "push",
+      });
+    });
+  });
+
+  describe("red_card_occurrence (yes/no, constant-0 benchmark operand)", () => {
+    const rule: EvaluateRule = {
+      statKey1: "total.full_time.redCards",
+      statKey2: "benchmark",
+      operator: "subtract",
+      comparison: "greater_than",
+      threshold: null,
+      benchmarkValue: 0,
+    };
+
+    it("yes when any red card was shown", () => {
+      const stats: FixtureStats = {
+        full_time: { home: teamStats(0, 0, 1), away: teamStats(0, 0, 0) },
+      };
+      expect(evaluateQuestion("red_card_occurrence", rule, stats)).toEqual({
+        status: "ready",
+        result: "yes",
+      });
+    });
+
+    it("no when no red card was shown", () => {
+      const stats: FixtureStats = {
+        full_time: { home: teamStats(0, 0, 0), away: teamStats(0, 0, 0) },
+      };
+      expect(evaluateQuestion("red_card_occurrence", rule, stats)).toEqual({
+        status: "ready",
+        result: "no",
+      });
+    });
+  });
+
   describe("yellow_cards_intra / red_cards_intra (higher/lower/push)", () => {
     const rule: EvaluateRule = {
       statKey1: "home.full_time.yellowCards",
