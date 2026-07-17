@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { TEMPLATES } from "./templates";
 import { selectDeterministicSecondaries } from "./generate";
 import { isLlmSelectorEnabled, selectQuestions } from "./llm-selector";
+import { secondaryBudget } from "./stage-budget";
 import type { GenerationContext } from "./types";
 
 const ctx: GenerationContext = {
@@ -91,7 +92,9 @@ describe("selectQuestions", () => {
     expect(result.source).toBe("fallback");
     // Retries once before falling back.
     expect(fetchImpl).toHaveBeenCalledTimes(2);
-    expect(result.rules.slice(1)).toEqual(selectDeterministicSecondaries(ctx, 1));
+    expect(result.rules.slice(1)).toEqual(
+      selectDeterministicSecondaries(ctx, secondaryBudget("group")),
+    );
   });
 
   it("falls back when the LLM picks a template that fails a semantic check (unavailable benchmark)", async () => {
@@ -117,7 +120,13 @@ describe("selectQuestions", () => {
     expect(result.source).toBe("fallback");
   });
 
-  it("falls back when the selection exceeds the stage's secondary budget", async () => {
+  // Every stage's secondary budget (9/9/11/11, see stage-budget.ts) now
+  // exceeds SECONDARY_TEMPLATE_IDS.length (7) — the same bound the response
+  // schema caps `selections` at — so an in-schema LLM response can no
+  // longer exceed the stage budget. This will bind again once more
+  // secondary templates are registered (plans/ten-question-generation.md
+  // Task 3/4).
+  it.skip("falls back when the selection exceeds the stage's secondary budget", async () => {
     const fetchImpl = vi.fn().mockResolvedValue(
       openRouterResponse([
         { templateId: "corners_intra", wordingVariant: 0 },
@@ -125,7 +134,6 @@ describe("selectQuestions", () => {
       ]),
     );
 
-    // group stage budget is 1 secondary card; 2 selections is over budget.
     const result = await selectQuestions(ctx, "group", { env: enabledEnv, fetchImpl });
 
     expect(result.source).toBe("fallback");

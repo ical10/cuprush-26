@@ -28,22 +28,27 @@ describe("generateQuestionRules", () => {
     expect(b).toEqual(a);
   });
 
-  it("respects the stage budget: group stage = 1 winner + 1 secondary", () => {
+  // Every stage's secondary budget (9/9/11/11) now exceeds the number of
+  // registered secondary categories (6), so with a fully-benchmarked
+  // context every stage surfaces all 6 available secondaries — the stage
+  // budget itself stops being the binding constraint until more templates
+  // are registered.
+  it("respects the stage budget: group stage = 1 winner + all available secondaries", () => {
     const rules = generateQuestionRules(richCtx, "group");
-    expect(rules).toHaveLength(2);
+    expect(rules).toHaveLength(7);
   });
 
-  it("respects the stage budget: early knockout = 1 winner + 2 secondary", () => {
+  it("respects the stage budget: early knockout = 1 winner + all available secondaries", () => {
     const rules = generateQuestionRules(richCtx, "early_knockout");
-    expect(rules).toHaveLength(3);
+    expect(rules).toHaveLength(7);
   });
 
-  it("respects the stage budget: semis/final = 1 winner + 3 secondary", () => {
-    expect(generateQuestionRules(richCtx, "semi_final")).toHaveLength(4);
-    expect(generateQuestionRules(richCtx, "final")).toHaveLength(4);
+  it("respects the stage budget: semis/final = 1 winner + all available secondaries", () => {
+    expect(generateQuestionRules(richCtx, "semi_final")).toHaveLength(7);
+    expect(generateQuestionRules(richCtx, "final")).toHaveLength(7);
   });
 
-  it("never exceeds the hard cap of 4 cards", () => {
+  it("never exceeds the hard cap of 12 cards", () => {
     for (const stage of ["group", "early_knockout", "semi_final", "final"] as const) {
       expect(generateQuestionRules(richCtx, stage).length).toBeLessThanOrEqual(
         HARD_CAP_TOTAL_CARDS,
