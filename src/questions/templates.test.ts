@@ -14,6 +14,24 @@ const ctxWithBenchmarks: GenerationContext = {
   teamBenchmark: { fixtureId: "wc-2026-arg-prev", side: "home", goals: 2 },
 };
 
+const ctxWithAggregates: GenerationContext = {
+  ...ctx,
+  lastTen: {
+    totalGoals: { average: 3, sampleCount: 10 },
+    totalCorners: { average: 9, sampleCount: 10 },
+    totalYellowCards: { average: 4, sampleCount: 10 },
+  },
+  teamLastTen: {
+    home: { average: 2, sampleCount: 10 },
+    away: { average: 1, sampleCount: 8 },
+  },
+};
+
+// Every benchmark kind present — used by the registry-wide loops so every
+// template (including the aggregate ones whose build() throws without an
+// aggregate) can be built.
+const ctxFull: GenerationContext = { ...ctxWithBenchmarks, ...ctxWithAggregates };
+
 function sides(rule: { statKey1: string; statKey2: string }): string[] {
   return [rule.statKey1.split(".")[0] ?? "", rule.statKey2.split(".")[0] ?? ""];
 }
@@ -28,9 +46,9 @@ describe("template registry", () => {
   it("builds deterministically: same context, same result, every time", () => {
     for (const id of TEMPLATE_IDS) {
       const template = TEMPLATES[id];
-      if (!template.isAvailable(ctxWithBenchmarks)) continue;
-      const first = template.build(ctxWithBenchmarks);
-      const second = template.build(ctxWithBenchmarks);
+      if (!template.isAvailable(ctxFull)) continue;
+      const first = template.build(ctxFull);
+      const second = template.build(ctxFull);
       expect(second).toEqual(first);
     }
   });
@@ -199,10 +217,109 @@ describe("red_cards_intra template", () => {
   });
 });
 
+describe.each([
+  ["total_goals_last10", "goals", "totalGoals", 3] as const,
+  ["total_corners_last10", "corners", "totalCorners", 9] as const,
+  ["total_yellow_cards_last10", "yellowCards", "totalYellowCards", 4] as const,
+])("%s template (last-10 higher/lower)", (id, stat, metric, average) => {
+  const template = TEMPLATES[id];
+
+  it("is unavailable without its last-10 aggregate", () => {
+    expect(template.isAvailable(ctx)).toBe(false);
+    const missing: GenerationContext = {
+      ...ctxWithAggregates,
+      lastTen: { ...ctxWithAggregates.lastTen!, [metric]: null },
+    };
+    expect(template.isAvailable(missing)).toBe(false);
+  });
+
+  it("anchors the aggregate average with an add + greater_than, no fixture id", () => {
+    expect(template.isAvailable(ctxWithAggregates)).toBe(true);
+    const built = template.build(ctxWithAggregates);
+    expect(built.tier).toBe("inter");
+    expect(built.rule.operator).toBe("add");
+    expect(built.rule.comparison).toBe("greater_than");
+    expect(built.rule.threshold).toBeNull();
+    expect(built.rule.benchmarkFixtureId).toBeNull();
+    expect(built.rule.benchmarkValue).toBe(average);
+    expect(built.rule.statKey1).toBe(`home.full_time.${stat}`);
+    expect(built.rule.statKey2).toBe(`away.full_time.${stat}`);
+    expect(sides(built.rule).sort()).toEqual(["away", "home"]);
+    expect(built.copy.outcomes).toEqual(["Higher", "Lower"]);
+    expect(built.copy.question).toContain(String(average));
+  });
+});
+
+describe.each([
+  ["team_goals_last10_home", "home", 2] as const,
+  ["team_goals_last10_away", "away", 1] as const,
+])("%s template (team last-10 yes/no)", (id, side, average) => {
+  const template = TEMPLATES[id];
+
+  it("is unavailable without that side's last-10 aggregate", () => {
+    expect(template.isAvailable(ctx)).toBe(false);
+    const missing: GenerationContext = {
+      ...ctxWithAggregates,
+      teamLastTen: { ...ctxWithAggregates.teamLastTen!, [side]: null },
+    };
+    expect(template.isAvailable(missing)).toBe(false);
+  });
+
+  it("compares the side's goals against its stored average via the benchmark sentinel", () => {
+    expect(template.isAvailable(ctxWithAggregates)).toBe(true);
+    const built = template.build(ctxWithAggregates);
+    expect(built.rule.statKey1).toBe(`${side}.full_time.goals`);
+    expect(built.rule.statKey2).toBe("benchmark");
+    expect(built.rule.operator).toBe("subtract");
+    expect(built.rule.comparison).toBe("greater_than");
+    expect(built.rule.threshold).toBeNull();
+    expect(built.rule.benchmarkFixtureId).toBeNull();
+    expect(built.rule.benchmarkValue).toBe(average);
+    expect(built.copy.outcomes).toEqual(["Yes", "No"]);
+    expect(built.copy.question).toContain(String(average));
+  });
+});
+
+describe("period_goals_intra template", () => {
+  const template = TEMPLATES.period_goals_intra;
+
+  it("is always available and compares second-half vs first-half goals", () => {
+    expect(template.isAvailable(ctx)).toBe(true);
+    const built = template.build(ctx);
+    expect(built.rule.statKey1).toBe("total.second_half.goals");
+    expect(built.rule.statKey2).toBe("total.first_half.goals");
+    expect(built.rule.operator).toBe("subtract");
+    expect(built.rule.comparison).toBe("greater_than");
+    expect(built.rule.threshold).toBe(0);
+    expect(built.rule.period).toBeNull();
+    expect(built.copy.outcomes).toEqual(["Higher", "Lower"]);
+  });
+});
+
+describe("red_card_occurrence template", () => {
+  const template = TEMPLATES.red_card_occurrence;
+
+  it("is always available (no benchmark data needed)", () => {
+    expect(template.isAvailable(ctx)).toBe(true);
+  });
+
+  it("encodes 'any red card' as redCards minus a constant-0 benchmark, greater_than", () => {
+    const built = template.build(ctx);
+    expect(built.rule.statKey1).toBe("total.full_time.redCards");
+    expect(built.rule.statKey2).toBe("benchmark");
+    expect(built.rule.operator).toBe("subtract");
+    expect(built.rule.comparison).toBe("greater_than");
+    expect(built.rule.threshold).toBeNull();
+    expect(built.rule.benchmarkValue).toBe(0);
+    expect(built.rule.benchmarkFixtureId).toBeNull();
+    expect(built.copy.outcomes).toEqual(["Yes", "No"]);
+  });
+});
+
 describe("TEMPLATE_OUTCOMES", () => {
   it("matches each template's rendered copy outcomes, lowercased", () => {
     for (const id of TEMPLATE_IDS) {
-      const built = TEMPLATES[id].build(ctxWithBenchmarks);
+      const built = TEMPLATES[id].build(ctxFull);
       expect(TEMPLATE_OUTCOMES[id]).toEqual(
         built.copy.outcomes.map((outcome) => outcome.toLowerCase()),
       );

@@ -2,6 +2,8 @@
 // selector, and the lifecycle scheduler. See worldcup-hilo-hackathon-research.md
 // "Priority 1: Gamification system" for the spec these implement.
 
+import type { LastMatchesAverage } from "./benchmarks";
+
 export type Side = "home" | "away";
 
 /** Proven benchmark from a completed *other* fixture, used by corners_inter_benchmark. */
@@ -22,6 +24,24 @@ export type TeamBenchmarkInfo = {
   goals: number;
 };
 
+/**
+ * Aggregate benchmarks over the last 10 finished fixtures, used by the
+ * `*_last10` higher/lower templates. Each metric is null when fewer than the
+ * minimum sample of finished fixtures with full_time stats exist (see
+ * src/questions/benchmarks.ts).
+ */
+export type LastTenAggregates = {
+  totalGoals: LastMatchesAverage | null;
+  totalCorners: LastMatchesAverage | null;
+  totalYellowCards: LastMatchesAverage | null;
+};
+
+/** Each team's own last-10 goals average, used by the `team_goals_last10_*` templates. */
+export type TeamLastTenAggregates = {
+  home: LastMatchesAverage | null;
+  away: LastMatchesAverage | null;
+};
+
 /** Everything a template needs to render one question for one fixture. */
 export type GenerationContext = {
   fixtureId: string;
@@ -29,6 +49,8 @@ export type GenerationContext = {
   awayTeam: string;
   benchmarkFixture?: BenchmarkFixtureInfo | null;
   teamBenchmark?: TeamBenchmarkInfo | null;
+  lastTen?: LastTenAggregates | null;
+  teamLastTen?: TeamLastTenAggregates | null;
 };
 
 export type Operator = "add" | "subtract";
@@ -60,7 +82,14 @@ export type TemplateId =
   | "goals_exact_margin"
   | "team_goals_inter_benchmark"
   | "yellow_cards_intra"
-  | "red_cards_intra";
+  | "red_cards_intra"
+  | "total_goals_last10"
+  | "total_corners_last10"
+  | "total_yellow_cards_last10"
+  | "team_goals_last10_home"
+  | "team_goals_last10_away"
+  | "period_goals_intra"
+  | "red_card_occurrence";
 
 export type BuiltQuestion = {
   templateId: TemplateId;

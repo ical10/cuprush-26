@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { TEMPLATES } from "./templates";
 import { selectDeterministicSecondaries } from "./generate";
 import { isLlmSelectorEnabled, selectQuestions } from "./llm-selector";
+import { secondaryBudget } from "./stage-budget";
 import type { GenerationContext } from "./types";
 
 const ctx: GenerationContext = {
@@ -91,7 +92,9 @@ describe("selectQuestions", () => {
     expect(result.source).toBe("fallback");
     // Retries once before falling back.
     expect(fetchImpl).toHaveBeenCalledTimes(2);
-    expect(result.rules.slice(1)).toEqual(selectDeterministicSecondaries(ctx, 1));
+    expect(result.rules.slice(1)).toEqual(
+      selectDeterministicSecondaries(ctx, secondaryBudget("group")),
+    );
   });
 
   it("falls back when the LLM picks a template that fails a semantic check (unavailable benchmark)", async () => {
@@ -117,18 +120,32 @@ describe("selectQuestions", () => {
     expect(result.source).toBe("fallback");
   });
 
+  // With 14 secondary templates registered (Task 3/4), the response schema's
+  // `selections` cap (SECONDARY_TEMPLATE_IDS.length) again exceeds the group
+  // stage's secondary budget of 9 — so an in-schema response can once more
+  // overshoot the budget and must fall back. validateSemantics checks the
+  // budget before availability, so distinct real template ids suffice here.
   it("falls back when the selection exceeds the stage's secondary budget", async () => {
     const fetchImpl = vi.fn().mockResolvedValue(
       openRouterResponse([
         { templateId: "corners_intra", wordingVariant: 0 },
+        { templateId: "corners_inter_benchmark", wordingVariant: 0 },
+        { templateId: "period_corners_intra", wordingVariant: 0 },
+        { templateId: "period_goals_intra", wordingVariant: 0 },
         { templateId: "goals_exact_margin", wordingVariant: 0 },
+        { templateId: "red_card_occurrence", wordingVariant: 0 },
+        { templateId: "total_goals_last10", wordingVariant: 0 },
+        { templateId: "total_corners_last10", wordingVariant: 0 },
+        { templateId: "total_yellow_cards_last10", wordingVariant: 0 },
+        { templateId: "team_goals_last10_home", wordingVariant: 0 },
       ]),
     );
 
-    // group stage budget is 1 secondary card; 2 selections is over budget.
     const result = await selectQuestions(ctx, "group", { env: enabledEnv, fetchImpl });
 
     expect(result.source).toBe("fallback");
+    // Retries once (over-budget both times) before falling back.
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
 
   it("falls back after a timeout, retrying once first", async () => {

@@ -105,6 +105,39 @@ export function renderCopy(
     }
   }
 
+  if (
+    question.template === "total_goals_last10" ||
+    question.template === "total_corners_last10" ||
+    question.template === "total_yellow_cards_last10"
+  ) {
+    const info = sideAndStat(question.statKey1);
+    const statLabel = info ? STAT_LABEL[info.stat] ?? info.stat : "events";
+    return {
+      text: `Last 10 matches averaged ${question.benchmarkValue ?? "?"} ${statLabel}. Will this match finish Higher or Lower?`,
+      outcomes,
+    };
+  }
+
+  if (
+    question.template === "team_goals_last10_home" ||
+    question.template === "team_goals_last10_away"
+  ) {
+    const info = sideAndStat(question.statKey1);
+    const name = info ? teamName(fixture, info.side) : "this team";
+    return {
+      text: `Will ${name} score more goals than their last-10 average (${question.benchmarkValue ?? "?"})?`,
+      outcomes,
+    };
+  }
+
+  if (question.template === "period_goals_intra") {
+    return { text: "Will second-half goals beat first-half goals?", outcomes };
+  }
+
+  if (question.template === "red_card_occurrence") {
+    return { text: "Will there be a red card in this match?", outcomes };
+  }
+
   // Remaining templates are all "<side> has more <stat> than <side>"
   // intra-fixture comparisons (corners_intra, yellow_cards_intra,
   // red_cards_intra).
