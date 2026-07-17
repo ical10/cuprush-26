@@ -6,12 +6,13 @@ import { AuthProvider } from "../auth/auth-context";
 import { clearToken, setToken } from "../lib/auth-storage";
 import type { Question } from "../lib/types";
 
-const { fetchQuestions, submitPredictionBatch } = vi.hoisted(() => ({
+const { fetchQuestions, fetchMyPredictions, submitPredictionBatch } = vi.hoisted(() => ({
   fetchQuestions: vi.fn(),
+  fetchMyPredictions: vi.fn(),
   submitPredictionBatch: vi.fn(),
 }));
 
-vi.mock("../lib/api", () => ({ fetchQuestions, submitPredictionBatch }));
+vi.mock("../lib/api", () => ({ fetchQuestions, fetchMyPredictions, submitPredictionBatch }));
 
 function question(id: string): Question {
   return {
@@ -57,6 +58,8 @@ describe("CardDeck batching", () => {
   beforeEach(() => {
     fetchQuestions.mockReset();
     submitPredictionBatch.mockReset();
+    fetchMyPredictions.mockReset();
+    fetchMyPredictions.mockResolvedValue([]);
     clearToken();
   });
 
@@ -81,6 +84,17 @@ describe("CardDeck batching", () => {
       { questionId: "q1", outcome: "yes" },
       { questionId: "q2", outcome: "no" },
     ]);
+  });
+
+  it("hides questions the user already predicted (no reappearing after refresh)", async () => {
+    fetchQuestions.mockResolvedValue([question("q1"), question("q2")]);
+    // q1 was already locked in a prior session — it must not reappear.
+    fetchMyPredictions.mockResolvedValue([{ questionId: "q1" }]);
+    renderDeck();
+
+    // Deck opens on q2, and q1 is nowhere in it.
+    await screen.findByText("Q q2?");
+    expect(screen.queryByText("Q q1?")).not.toBeInTheDocument();
   });
 
   it("keeps answers and offers retry when the batch submit fails", async () => {

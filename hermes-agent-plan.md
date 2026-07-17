@@ -5,7 +5,7 @@
 ## Delivery ownership
 
 - **`[HERMES-BUILD]`** The implementation Hermes writes the schema, MCP tools, cron scripts, seed and provisioning commands, UI changes, tests, and setup documentation.
-- **`[HITL]`** A human supplies Privy and Hermes credentials, approves auth or user-data changes, installs the cohort token, deploys the gateway, and runs the live mainnet check.
+- **`[HITL]`** A human supplies Privy and Hermes credentials, approves auth or user-data changes, installs the cohort token, deploys the gateway, and runs the live devnet check.
 - Runtime cohort parents and subagents are product actors, not build owners.
 
 ## Goal
@@ -168,7 +168,7 @@ If a child fails, retry it once with a deterministic fallback prompt that requir
 - Set delegation concurrency to five.
 - Give the cron session only `delegation` and the `cohort` MCP toolset.
 - Give delegated children no toolsets.
-- Load `HILO_COHORT_TOKEN` from Hermes environment configuration.
+- Load `CUPRUSH_COHORT_TOKEN` from Hermes environment configuration.
 - Keep the token out of prompts, task context, seed data, and logs.
 - Configure the pre-check script with a short HTTP timeout and fail closed.
 

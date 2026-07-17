@@ -59,6 +59,8 @@ jobs:
           --health-retries 5
     env:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/worldcup_hilo
+      # Auth defaults to privy (fail-closed) and throws without credentials;
+      # integration tests that build the app from env need the dev stub.
       AUTH_MODE: dev
       # The integration global setup shells out to dropdb/createdb, which
       # read the PG* vars to reach the service container.
@@ -84,3 +86,35 @@ jobs:
       # fails without a .env file; invoke vitest directly instead.
       - name: Integration tests
         run: node node_modules/vitest/vitest.mjs run --project integration
+
+      # Boots the actual production entrypoint (`tsx src/api/server.ts`)
+      # under Node's real ESM loader. Lint/typecheck/unit/web/build never
+      # execute this path — vitest and tsx's esbuild-based CJS/ESM interop
+      # is more permissive than Node's native loader, so a bad named import
+      # from a CJS dependency (e.g. @coral-xyz/anchor's BN) can pass every
+      # other check and still crash on boot. src/chain/index.ts imports
+      # solana.ts unconditionally, so this needs no chain credentials —
+      # only DATABASE_URL and the dev auth stub.
+      - name: Boot smoke test
+        env:
+          PORT: "3100"
+          NODE_ENV: test
+          TXLINE_MODE: replay
+        run: |
+          pnpm exec tsx src/db/migrate.ts
+          pnpm exec tsx src/api/server.ts &
+          server_pid=$!
+          trap 'kill $server_pid 2>/dev/null' EXIT
+          for i in $(seq 1 30); do
+            if curl -sf http://localhost:3100/api/health > /dev/null; then
+              echo "Server booted and responded healthy."
+              exit 0
+            fi
+            if ! kill -0 $server_pid 2>/dev/null; then
+              echo "Server process exited before becoming healthy."
+              exit 1
+            fi
+            sleep 1
+          done
+          echo "Server did not become healthy within 30s."
+          exit 1

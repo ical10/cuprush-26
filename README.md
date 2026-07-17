@@ -4,6 +4,17 @@ Mobile-first fan game: predict match and stat outcomes, save the pick through
 Solana, watch the card react to live TxLINE events, climb the leaderboard.
 See `plans/PRD.md` for the full product spec.
 
+## Disclaimer
+
+CupRush 26 is an independent hackathon proof of concept. It is not affiliated
+with, endorsed by, sponsored by, or officially connected to the FIFA World Cup
+26, FIFA, or any tournament organizer. It is not an official video game or
+official tournament product.
+
+## License
+
+MIT. See `LICENSE`.
+
 ## Architecture
 
 One TypeScript package, ESM, Node 22, pnpm. Hono runs the REST API and SSE live
@@ -90,7 +101,7 @@ and an explicit `AUTH_MODE=dev`; the remaining variables are optional.
 | `TXLINE_FIXTURES_DIR` | `src/txline/fixtures/samples` | Alternate replay fixtures directory |
 | `PRIVY_APP_ID` / `PRIVY_APP_SECRET` | — | Privy credentials (`AUTH_MODE=privy` only) |
 | `CHAIN_MODE` | stub | `solana` selects the real chain adapter |
-| `SOLANA_RPC_URL` / `HILO_PROGRAM_ID` | — | Solana adapter config (`CHAIN_MODE=solana` only) |
+| `SOLANA_RPC_URL` / `CUPRUSH_PROGRAM_ID` | — | Solana adapter config (`CHAIN_MODE=solana` only) |
 | `MATCH_RUNNER_CHAIN_WRITES` | `disabled` | `enabled` permits runner chain writes only with `CHAIN_MODE=solana` |
 | `LLM_SELECTOR` / `OPENROUTER_API_KEY` / `OPENROUTER_MODEL` | off | Optional LLM question selector (background only) |
 

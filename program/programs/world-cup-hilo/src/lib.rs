@@ -7,7 +7,7 @@
 //! enforces `opens_at`/`locks_at` on-chain so a custom client can never
 //! predict early or late; `settle_question` refuses double settlement.
 //!
-//! Build and mainnet deploy are HITL (issue 13). The declared id is a
+//! Build and devnet deploy are HITL (issue 13). The declared id is a
 //! placeholder replaced by `anchor keys sync` at deploy time. For an
 //! inter-fixture question the authority proves the benchmark through
 //! TxOracle (Equal predicate) before calling `create_question` and stores
@@ -16,7 +16,7 @@
 
 use anchor_lang::prelude::*;
 
-declare_id!("2Yon9VrntK9ASpvHRJ1NzeTFBziWtUWPYVBZZWdk68to");
+declare_id!("9u7uuj7S8kMon564b4TA8Gc7RaYXSC5QgjDz8fFgmGCU");
 
 pub const QUESTION_SEED: &[u8] = b"question";
 pub const PREDICTION_SEED: &[u8] = b"prediction";
