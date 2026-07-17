@@ -26,13 +26,13 @@ import {
   type ChainQuestionResult,
   type ChainQuestionRule,
 } from "./adapter";
-import idlJson from "./idl/world_cup_hilo.json";
+import idlJson from "./idl/cuprush.json";
 
 /**
  * Devnet Solana chain adapter — the production chain path for CupRush 26
  * (devnet-only product decision).
  *
- * Questions map 1:1 onto the deployed world_cup_hilo Anchor program:
+ * Questions map 1:1 onto the deployed cuprush Anchor program:
  * `create_question` / `settle_question` instructions and the Question
  * account at seeds [b"question", rule_hash].
  *

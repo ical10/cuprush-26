@@ -5,7 +5,7 @@ import { isChainError, type ChainAdapter, type ChainQuestionRule } from "./adapt
 import { createSolanaChainAdapter } from "./solana";
 
 /**
- * Real devnet round trip against the deployed world_cup_hilo program. Auto
+ * Real devnet round trip against the deployed cuprush program. Auto
  * skips unless CUPRUSH_PROGRAM_ID and SOLANA_PRIVATE_KEY are set (the private
  * key must belong to a funded devnet wallet — it pays rent and fees).
  * Every run uses a fresh random rule hash and a throwaway wallet, so runs

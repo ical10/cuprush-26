@@ -1,4 +1,4 @@
-//! World Cup Hi-Lo on-chain program.
+//! CupRush on-chain program.
 //!
 //! Two accounts (Question, Prediction), three instructions (create_question,
 //! submit_prediction, settle_question) — see the research doc "On-chain
@@ -25,7 +25,7 @@ pub const MAX_FIXTURE_ID_LEN: usize = 32;
 pub const MAX_STAT_KEY_LEN: usize = 32;
 
 #[program]
-pub mod world_cup_hilo {
+pub mod cuprush {
     use super::*;
 
     /// Creates the one immutable Question account for a canonical rule.

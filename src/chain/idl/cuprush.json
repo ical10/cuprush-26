@@ -1,10 +1,10 @@
 {
   "address": "9u7uuj7S8kMon564b4TA8Gc7RaYXSC5QgjDz8fFgmGCU",
   "metadata": {
-    "name": "world_cup_hilo",
+    "name": "cuprush",
     "version": "0.1.0",
     "spec": "0.1.0",
-    "description": "World Cup Hi-Lo on-chain question + prediction program"
+    "description": "CupRush on-chain question + prediction program"
   },
   "instructions": [
     {

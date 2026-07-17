@@ -1,5 +1,5 @@
 /**
- * Chain adapter interface mirroring program/programs/world-cup-hilo (three
+ * Chain adapter interface mirroring program/programs/cuprush (three
  * instructions over two accounts). Implementations: the in-memory stub
  * (src/chain/stub.ts — default for dev and tests) and the solana skeleton
  * (src/chain/solana.ts — HITL until the program is deployed, issue 13).

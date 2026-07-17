@@ -11,7 +11,7 @@ import {
   type FetchedTransaction,
   type SolanaRpc,
 } from "./solana";
-import idlJson from "./idl/world_cup_hilo.json";
+import idlJson from "./idl/cuprush.json";
 
 const PROGRAM_ID = "9u7uuj7S8kMon564b4TA8Gc7RaYXSC5QgjDz8fFgmGCU";
 const AUTHORITY = Keypair.generate();
