@@ -56,6 +56,9 @@ export type StubChainAdapterOptions = {
   clock?: () => Date;
 };
 
+/** Fixed stand-in for the signing authority (base58, address-shaped). */
+const STUB_AUTHORITY = fakeAddress("stub-authority");
+
 export function createStubChainAdapter(
   options: StubChainAdapterOptions = {},
 ): ChainAdapter {
@@ -72,6 +75,7 @@ export function createStubChainAdapter(
   }
 
   return {
+    authorityPubkey: STUB_AUTHORITY,
     deriveQuestionPda,
     deriveBatchPda,
 
@@ -87,7 +91,13 @@ export function createStubChainAdapter(
           new ChainError("question_exists", `question account in use: ${pda}`),
         );
       }
-      questions.set(pda, { ...rule, pda, status: "open", result: null });
+      questions.set(pda, {
+        ...rule,
+        pda,
+        authority: STUB_AUTHORITY,
+        status: "open",
+        result: null,
+      });
       return Promise.resolve({ pda });
     },
 

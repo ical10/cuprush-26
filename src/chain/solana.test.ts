@@ -11,7 +11,7 @@ import {
   type FetchedTransaction,
   type SolanaRpc,
 } from "./solana";
-import idlJson from "./idl/world_cup_hilo.json";
+import idlJson from "./idl/cuprush.json";
 
 const PROGRAM_ID = "9u7uuj7S8kMon564b4TA8Gc7RaYXSC5QgjDz8fFgmGCU";
 const AUTHORITY = Keypair.generate();
@@ -561,6 +561,7 @@ describe("solana getQuestion", () => {
 
     expect(await adapter.getQuestion(pda)).toEqual({
       pda,
+      authority: AUTHORITY.publicKey.toBase58(),
       ruleHash: RULE_HASH,
       fixtureId: "fixture-1",
       benchmarkFixtureId: "fixture-0",
@@ -575,6 +576,30 @@ describe("solana getQuestion", () => {
       status: "settled",
       result: "push",
     });
+  });
+
+  it("decodes a Void status as void (not settled)", async () => {
+    const data = await encodedQuestion({ status: { Void: {} }, result: null });
+    const adapter = adapterWith(
+      fakeRpc({ getAccountInfo: () => Promise.resolve({ data }) }),
+    );
+    const question = await adapter.getQuestion(
+      adapter.deriveQuestionPda(RULE_HASH),
+    );
+    expect(question?.status).toBe("void");
+    expect(question?.result).toBeNull();
+  });
+
+  it("exposes the configured authority pubkey and decodes it", async () => {
+    const data = await encodedQuestion();
+    const adapter = adapterWith(
+      fakeRpc({ getAccountInfo: () => Promise.resolve({ data }) }),
+    );
+    expect(adapter.authorityPubkey).toBe(AUTHORITY.publicKey.toBase58());
+    const question = await adapter.getQuestion(
+      adapter.deriveQuestionPda(RULE_HASH),
+    );
+    expect(question?.authority).toBe(AUTHORITY.publicKey.toBase58());
   });
 });
 

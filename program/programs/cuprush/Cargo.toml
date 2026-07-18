@@ -1,12 +1,12 @@
 [package]
-name = "world-cup-hilo"
+name = "cuprush"
 version = "0.1.0"
-description = "World Cup Hi-Lo on-chain question + prediction program"
+description = "CupRush on-chain question + prediction program"
 edition = "2021"
 
 [lib]
 crate-type = ["cdylib", "lib"]
-name = "world_cup_hilo"
+name = "cuprush"
 
 [features]
 default = []

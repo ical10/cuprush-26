@@ -1,5 +1,5 @@
 /**
- * Chain adapter interface mirroring program/programs/world-cup-hilo (three
+ * Chain adapter interface mirroring program/programs/cuprush (three
  * instructions over two accounts). Implementations: the in-memory stub
  * (src/chain/stub.ts — default for dev and tests) and the solana skeleton
  * (src/chain/solana.ts — HITL until the program is deployed, issue 13).
@@ -27,7 +27,9 @@ export type ChainQuestionRule = {
 
 export type ChainQuestion = ChainQuestionRule & {
   pda: string;
-  status: "open" | "settled";
+  /** Base58 key that created the question (Question.authority on chain). */
+  authority: string;
+  status: "open" | "settled" | "void";
   result: ChainQuestionResult | null;
 };
 
@@ -50,6 +52,7 @@ export type ChainErrorCode =
   | "question_not_found"
   | "batch_exists"
   | "already_settled"
+  | "authority_mismatch"
   | "not_configured";
 
 export class ChainError extends Error {
@@ -70,6 +73,11 @@ export function isChainError(
 }
 
 export interface ChainAdapter {
+  /**
+   * Base58 of the trusted authority this adapter signs with. Callers compare
+   * it against a question's on-chain `authority` to reject PDA squatting.
+   */
+  readonly authorityPubkey: string;
   /** Deterministic Question address for seeds [b"question", rule_hash]. */
   deriveQuestionPda(ruleHash: string): string;
   /** Deterministic Batch address for seeds [b"batch", wallet]. */

@@ -26,13 +26,13 @@ import {
   type ChainQuestionResult,
   type ChainQuestionRule,
 } from "./adapter";
-import idlJson from "./idl/world_cup_hilo.json";
+import idlJson from "./idl/cuprush.json";
 
 /**
  * Devnet Solana chain adapter — the production chain path for CupRush 26
  * (devnet-only product decision).
  *
- * Questions map 1:1 onto the deployed world_cup_hilo Anchor program:
+ * Questions map 1:1 onto the deployed cuprush Anchor program:
  * `create_question` / `settle_question` instructions and the Question
  * account at seeds [b"question", rule_hash].
  *
@@ -331,8 +331,10 @@ export function createSolanaChainAdapter(
 
   function decodeQuestion(pda: string, data: Buffer): ChainQuestion {
     const raw = coder.accounts.decode<RawQuestion>("Question", data);
+    const statusName = variantName(raw.status);
     return {
       pda,
+      authority: raw.authority.toBase58(),
       ruleHash: Buffer.from(raw.rule_hash).toString("hex"),
       fixtureId: raw.fixture_id,
       benchmarkFixtureId: raw.benchmark_fixture_id,
@@ -349,7 +351,12 @@ export function createSolanaChainAdapter(
       benchmarkValue: raw.benchmark === null ? null : raw.benchmark.toNumber(),
       opensAt: new Date(raw.opens_at.toNumber() * 1000),
       locksAt: new Date(raw.locks_at.toNumber() * 1000),
-      status: variantName(raw.status) === "Open" ? "open" : "settled",
+      status:
+        statusName === "Open"
+          ? "open"
+          : statusName === "Void"
+            ? "void"
+            : "settled",
       result:
         raw.result === null
           ? null
@@ -435,6 +442,7 @@ export function createSolanaChainAdapter(
   }
 
   return {
+    authorityPubkey: authority.publicKey.toBase58(),
     deriveQuestionPda,
     deriveBatchPda,
 

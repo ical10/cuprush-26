@@ -1,7 +1,12 @@
 import { and, eq, isNull, lte, or } from "drizzle-orm";
 import type { Database } from "../db/client";
 import { participants, predictionBatches, questions } from "../db/schema";
-import { isChainError, type ChainAdapter, type ChainBatch } from "../chain";
+import {
+  ChainError,
+  isChainError,
+  type ChainAdapter,
+  type ChainBatch,
+} from "../chain";
 
 /**
  * Postgres <-> chain state machine for prediction batches (research doc
@@ -46,7 +51,7 @@ export async function ensureQuestionOnChain(
   if (question.questionPda) return question.questionPda;
 
   const pda = adapter.deriveQuestionPda(question.ruleHash);
-  const existing = await adapter.getQuestion(pda);
+  let existing = await adapter.getQuestion(pda);
   if (!existing) {
     try {
       await adapter.createQuestion({
@@ -63,9 +68,21 @@ export async function ensureQuestionOnChain(
         locksAt: question.locksAt,
       });
     } catch (error) {
-      // Lost a create race: the account exists, which is all we need.
+      // Lost a create race: the account exists, which is all we need — but it
+      // could belong to a squatter, so re-read it and let the check below run.
       if (!isChainError(error, "question_exists")) throw error;
+      existing = await adapter.getQuestion(pda);
     }
+  }
+
+  // Squatting defense: any pre-existing account at this PDA must have been
+  // created by our own authority. A mismatch is terminal — never retry it and
+  // never record the foreign PDA as ours.
+  if (existing && existing.authority !== adapter.authorityPubkey) {
+    throw new ChainError(
+      "authority_mismatch",
+      `question PDA ${pda} is owned by an unexpected authority ${existing.authority}`,
+    );
   }
 
   await db

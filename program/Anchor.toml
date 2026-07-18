@@ -6,7 +6,7 @@ resolution = true
 skip-lint = false
 
 [programs.devnet]
-world_cup_hilo = "9u7uuj7S8kMon564b4TA8Gc7RaYXSC5QgjDz8fFgmGCU"
+cuprush = "9u7uuj7S8kMon564b4TA8Gc7RaYXSC5QgjDz8fFgmGCU"
 
 [provider]
 cluster = "devnet"
