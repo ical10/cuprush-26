@@ -8,6 +8,7 @@ import {
   createPredictionRoutes,
   type PredictionRoutesOptions,
 } from "./routes/predictions";
+import { createCohortRoutes } from "./routes/cohort";
 import { createAuthAdapterFromEnv, type AuthAdapter } from "./auth/adapter";
 import type { DbProvider } from "./auth/middleware";
 import { createChainAdapterFromEnv, type ChainAdapter } from "../chain";
@@ -63,6 +64,7 @@ export function createApp(options: CreateAppOptions = {}) {
   app.route("/api", createLeaderboardRoute(getDb));
   app.route("/api", createQuestionsRoute(getDb));
   app.route("/api", createPredictionRoutes(getDb, auth, chain, options.predictions));
+  app.route("/api", createCohortRoutes(getDb, chain));
 
   return app;
 }
