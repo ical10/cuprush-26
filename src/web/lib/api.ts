@@ -82,8 +82,8 @@ export function revokeDelegation(): Promise<{ delegationRevokedAt: string | null
   return request("/wallet/delegation/revoke", { method: "POST" });
 }
 
-export function fetchLeaderboard(): Promise<LeaderboardRow[]> {
-  return request("/leaderboard");
+export function fetchLeaderboard(kind?: "human" | "agent"): Promise<LeaderboardRow[]> {
+  return request(kind ? `/leaderboard?kind=${kind}` : "/leaderboard");
 }
 
 export function logout(): Promise<void> {

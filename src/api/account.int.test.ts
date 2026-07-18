@@ -12,7 +12,7 @@ import { createDevAuthAdapter } from "./auth/dev";
 // file in the run, so each test uses its own random dev token / privy user
 // id and never assumes it owns the whole table.
 
-const { participants, users } = schema;
+const { participants, users, agentCohorts, agents } = schema;
 const sql = postgres(testDatabaseUrl(), { max: 10 });
 const db = drizzle(sql, { schema });
 
@@ -246,6 +246,46 @@ describe("PATCH /api/me", () => {
   });
 });
 
+/**
+ * Seeds one agent participant end-to-end: an owning human user, an
+ * agent_cohorts row, and the agents row binding participant to cohort.
+ * Mirrors the hermes-agent-plan data model (participants.kind='agent' +
+ * agents + agent_cohorts) — this suite owns test-local inserts only, not
+ * the real seed command.
+ */
+async function seedAgent(overrides: { displayName?: string; points?: number } = {}) {
+  const ownerPrivyId = `owner-${randomUUID()}`;
+  const [ownerParticipant] = await db
+    .insert(participants)
+    .values({ kind: "human", displayName: `owner-${randomUUID().slice(0, 8)}` })
+    .returning();
+  const [owner] = await db
+    .insert(users)
+    .values({ participantId: ownerParticipant!.id, privyUserId: ownerPrivyId })
+    .returning();
+  const [cohort] = await db
+    .insert(agentCohorts)
+    .values({ ownerUserId: owner!.id, name: `cohort-${randomUUID().slice(0, 8)}` })
+    .returning();
+  const [agentParticipant] = await db
+    .insert(participants)
+    .values({
+      kind: "agent",
+      displayName: overrides.displayName ?? `agent-${randomUUID().slice(0, 8)}`,
+      points: overrides.points ?? 0,
+    })
+    .returning();
+  await db.insert(agents).values({
+    participantId: agentParticipant!.id,
+    cohortId: cohort!.id,
+    agentKey: `key-${randomUUID().slice(0, 8)}`,
+    persona: "Test persona",
+    strategy: "Test strategy",
+    model: "test-model",
+  });
+  return { participant: agentParticipant!, cohortName: cohort!.name };
+}
+
 describe("GET /api/leaderboard", () => {
   it("orders by points desc then best streak desc and caps at 50 rows", async () => {
     // Distinctive high scores so these three outrank every other row the
@@ -298,6 +338,72 @@ describe("GET /api/leaderboard", () => {
   it("is public (no token required)", async () => {
     const res = await app.request("/api/leaderboard");
     expect(res.status).toBe(200);
+  });
+
+  it("tags every row with kind, and agent rows with their cohort name", async () => {
+    const humanName = `lb-human-${randomUUID().slice(0, 8)}`;
+    await db.insert(participants).values({
+      kind: "human",
+      displayName: humanName,
+      points: 5_000_000,
+    });
+    const { participant: agentParticipant, cohortName } = await seedAgent({
+      points: 5_000_001,
+    });
+
+    const res = await app.request("/api/leaderboard");
+    expect(res.status).toBe(200);
+    const rows: { displayName: string | null; kind: string; cohortName: string | null }[] =
+      await res.json();
+
+    const humanRow = rows.find((r) => r.displayName === humanName);
+    expect(humanRow).toMatchObject({ kind: "human", cohortName: null });
+
+    const agentRow = rows.find((r) => r.displayName === agentParticipant.displayName);
+    expect(agentRow).toMatchObject({ kind: "agent", cohortName });
+  });
+
+  it("?kind=human returns only human rows", async () => {
+    const humanName = `lb-kind-human-${randomUUID().slice(0, 8)}`;
+    await db.insert(participants).values({
+      kind: "human",
+      displayName: humanName,
+      points: 6_000_000,
+    });
+    const { participant: agentParticipant } = await seedAgent({ points: 6_000_001 });
+
+    const res = await app.request("/api/leaderboard?kind=human");
+    expect(res.status).toBe(200);
+    const rows: { displayName: string | null; kind: string }[] = await res.json();
+
+    expect(rows.every((r) => r.kind === "human")).toBe(true);
+    expect(rows.some((r) => r.displayName === humanName)).toBe(true);
+    expect(rows.some((r) => r.displayName === agentParticipant.displayName)).toBe(false);
+  });
+
+  it("?kind=agent returns only agent rows", async () => {
+    const humanName = `lb-kind-agent-human-${randomUUID().slice(0, 8)}`;
+    await db.insert(participants).values({
+      kind: "human",
+      displayName: humanName,
+      points: 7_000_000,
+    });
+    const { participant: agentParticipant } = await seedAgent({ points: 7_000_001 });
+
+    const res = await app.request("/api/leaderboard?kind=agent");
+    expect(res.status).toBe(200);
+    const rows: { displayName: string | null; kind: string }[] = await res.json();
+
+    expect(rows.every((r) => r.kind === "agent")).toBe(true);
+    expect(rows.some((r) => r.displayName === agentParticipant.displayName)).toBe(true);
+    expect(rows.some((r) => r.displayName === humanName)).toBe(false);
+  });
+
+  it("ignores an unrecognized ?kind value and falls back to Overall", async () => {
+    const res = await app.request("/api/leaderboard?kind=nonsense");
+    expect(res.status).toBe(200);
+    const all = await (await app.request("/api/leaderboard")).json();
+    expect(await res.json()).toEqual(all);
   });
 });
 
