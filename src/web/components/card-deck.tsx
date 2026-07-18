@@ -146,7 +146,7 @@ function Deck({ onNavigateAuth, initialAnswer, onInitialAnswerConsumed }: Props)
       return (
         <div className="screen deck-screen">
           <div className="deck-locked clip-cut">
-            <TxStatus state="locked" />
+            <TxStatus state="saved" />
             <p className="deck-progress">
               {answers.length} pick{answers.length === 1 ? "" : "s"} locked in.
             </p>

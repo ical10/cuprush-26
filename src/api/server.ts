@@ -10,11 +10,12 @@ import { createSettlementExecutor } from "../questions/settle";
 import { createPredictionReconciler } from "../predictions/reconciler";
 import { parseAppRuntimeMode } from "./runtime-mode";
 
-// One chain adapter for the whole process: the prediction routes and the
-// reconciler must share it (the stub's state is in-memory).
+// One chain adapter for the whole process, shared by the reconciler and the
+// settlement executor (the stub's state is in-memory). The request routes no
+// longer touch chain — the reconciler is the single commit path.
 const chain = createChainAdapterFromEnv();
 
-const app = createApp({ chain });
+const app = createApp();
 
 // Serve the built client whenever it exists (production, or a local
 // production-ish smoke run with the dev auth stub). The /api routes were

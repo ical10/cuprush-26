@@ -1,6 +1,6 @@
-import { and, eq, isNull, lte, or } from "drizzle-orm";
+import { and, eq, gt, isNull, lte, or } from "drizzle-orm";
 import type { Database } from "../db/client";
-import { participants, predictionBatches, questions } from "../db/schema";
+import { fixtures, participants, predictionBatches, questions } from "../db/schema";
 import {
   ChainError,
   isChainError,
@@ -29,6 +29,14 @@ type BatchRow = typeof predictionBatches.$inferSelect;
 
 export const BASE_RETRY_DELAY_MS = 30_000;
 export const MAX_RETRY_DELAY_MS = 10 * 60_000;
+
+// A fixture's questions all lock at kickoff-30m (questions.locks_at =
+// fixtures.starts_at - 30m, set in src/questions/generate.ts). The reconciler
+// is the single commit path: it freezes a fixture's batch hashes on chain the
+// moment that lock passes, so every accepted pick is inside the hash. Deriving
+// the lock from starts_at avoids a per-question join (an empty batch has no
+// predictions to join through, but always has a fixture).
+const LOCK_MARGIN_MS = 30 * 60_000;
 
 /** Capped exponential backoff: 30s, 60s, 120s, ... capped at 10 minutes. */
 export function retryDelayMs(attemptCount: number): number {
@@ -210,6 +218,8 @@ export async function reconcilePendingBatches(
   adapter: ChainAdapter,
   now = new Date(),
 ): Promise<ReconcileResult> {
+  // A fixture has locked once now >= starts_at - 30m, i.e. starts_at <= now + 30m.
+  const lockedBy = new Date(now.getTime() + LOCK_MARGIN_MS);
   const due = await db
     .select({
       batch: predictionBatches,
@@ -217,10 +227,17 @@ export async function reconcilePendingBatches(
     })
     .from(predictionBatches)
     .innerJoin(participants, eq(predictionBatches.participantId, participants.id))
+    .innerJoin(fixtures, eq(predictionBatches.fixtureId, fixtures.id))
     .where(
       and(
         eq(predictionBatches.chainStatus, "pending"),
         or(isNull(predictionBatches.nextRetryAt), lte(predictionBatches.nextRetryAt, now)),
+        // Commit trigger: a never-attempted batch is held until its fixture
+        // locks (starts_at <= now + 30m) so its hash freezes with every pick
+        // inside it. A batch that already reached the chain (attemptCount > 0)
+        // keeps its own retry/backoff cadence regardless of lock — it was a
+        // legitimate submission, not a premature one.
+        or(gt(predictionBatches.attemptCount, 0), lte(fixtures.startsAt, lockedBy)),
       ),
     );
 

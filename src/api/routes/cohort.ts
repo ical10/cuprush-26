@@ -13,9 +13,7 @@ import {
   predictions,
   questions,
 } from "../../db/schema";
-import type { ChainAdapter } from "../../chain";
 import { computeBatchHash } from "../../predictions/hash";
-import { submitPendingBatch } from "../../predictions/reconciler";
 import { allowedOutcomes } from "../../questions/templates";
 import type { Database } from "../../db/client";
 import { renderCopy } from "./questions";
@@ -106,7 +104,7 @@ type ItemResult =
  * rejected; raw model output is never stored (strict schema validation);
  * duplicates are idempotent.
  */
-export function createCohortRoutes(getDb: DbProvider, chain: ChainAdapter) {
+export function createCohortRoutes(getDb: DbProvider) {
   const app = new Hono<CohortEnvBindings>();
   const requireCohort = createCohortAuth(getDb);
 
@@ -331,12 +329,12 @@ export function createCohortRoutes(getDb: DbProvider, chain: ChainAdapter) {
       results.push({ ...echo, ok: true, predictionId });
     }
 
-    // Flow accepted predictions into the same chain-commitment machinery
-    // humans use — but only while the batch is still pending (the on-chain
-    // batch hash is immutable once confirmed; see the batch-semantics note at
-    // the foot of this file).
+    // Keep each touched fixture's stored batch hash current with the picks now
+    // attached. Nothing is submitted on chain here — the reconciler is the
+    // single commit path and freezes each hash on chain when its fixture locks
+    // (see the batch-semantics note at the foot of this file).
     for (const participantId of affected) {
-      await commitBatch(db, chain, participantId, now);
+      await refreshBatchHashes(db, participantId);
     }
 
     return c.json({ results });
@@ -428,29 +426,22 @@ async function ensureBatch(
 }
 
 /**
- * Recomputes each of the participant's pending batch hashes over the
- * predictions now attached and submits them on chain — but only while a batch
- * is still pending. A participant can hold one batch per fixture; each is
- * committed independently. Once a batch is confirmed on chain its hash is
- * frozen (the batch PDA is immutable), so later-tick predictions for it are
- * stored and attributed but not re-committed. Reuses the human submit path
- * (submitPendingBatch).
+ * Recomputes each of the participant's still-pending batch hashes over the
+ * predictions now attached, keeping the stored hash current as decisions
+ * arrive across ticks. A participant can hold one batch per fixture; each is
+ * hashed independently. Once a batch is confirmed on chain its hash is frozen
+ * (the batch PDA is immutable), so a confirmed batch is left untouched. No
+ * chain submission happens here — the reconciler commits each fixture's hash
+ * when that fixture locks.
  */
-async function commitBatch(
+async function refreshBatchHashes(
   db: Database,
-  chain: ChainAdapter,
   participantId: string,
-  now: Date,
 ): Promise<void> {
   const batches = await db
     .select()
     .from(predictionBatches)
     .where(eq(predictionBatches.participantId, participantId));
-
-  const [participant] = await db
-    .select()
-    .from(participants)
-    .where(eq(participants.id, participantId));
 
   for (const batch of batches) {
     if (batch.chainStatus !== "pending") continue;
@@ -465,15 +456,5 @@ async function commitBatch(
       .update(predictionBatches)
       .set({ batchHash })
       .where(eq(predictionBatches.id, batch.id));
-
-    // No wallet yet (or delegation revoked) → leave the batch pending for the
-    // reconciler, exactly as the human path does.
-    if (!participant?.walletAddress || participant.delegationRevokedAt) continue;
-
-    await submitPendingBatch(db, chain, {
-      batch: { ...batch, batchHash },
-      wallet: participant.walletAddress,
-      now,
-    });
   }
 }

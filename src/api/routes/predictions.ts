@@ -7,14 +7,12 @@ import {
   predictions,
   questions,
 } from "../../db/schema";
-import type { ChainAdapter } from "../../chain";
 import {
   createRateLimiter,
   type RateLimiterOptions,
 } from "../../chain/guardrails";
 import { allowedOutcomes } from "../../questions/templates";
 import { computeBatchHash } from "../../predictions/hash";
-import { submitPendingBatch } from "../../predictions/reconciler";
 import { renderCopy } from "./questions";
 import type { AuthAdapter } from "../auth/adapter";
 import {
@@ -71,15 +69,15 @@ function batchPayload(
  * Batched prediction submission. The whole deck (both matches, same day)
  * commits at once: insert every prediction in one transaction, compute the
  * canonical batch hash server-side from what was inserted, create the
- * one-per-participant batch row, and submit that single hash on chain. A
- * duplicate request returns the existing batch — never a second batch, never
- * a changed answer. A chain failure leaves the batch pending with a
- * backed-off retry for the reconciler (src/predictions/reconciler.ts).
+ * one-per-participant batch row with an always-current hash. A duplicate
+ * request returns the existing batch — never a second batch, never a changed
+ * answer. Nothing is submitted on chain here: the batch stays pending and the
+ * reconciler (src/predictions/reconciler.ts) is the single commit path,
+ * freezing each fixture's hash on chain when that fixture locks.
  */
 export function createPredictionRoutes(
   getDb: DbProvider,
   auth: AuthAdapter,
-  chain: ChainAdapter,
   options: PredictionRoutesOptions = {},
 ) {
   const app = new Hono<AuthEnvBindings>();
@@ -231,21 +229,15 @@ export function createPredictionRoutes(
       }
 
       anyCreated = true;
-      await submitPendingBatch(db, chain, {
-        batch,
-        wallet: participant.walletAddress,
-        now,
-      });
-
-      const [fresh] = await db
-        .select()
-        .from(predictionBatches)
-        .where(eq(predictionBatches.id, batch.id));
+      // No chain submit on the request path: the batch stays pending with an
+      // always-current hash. The reconciler is the single commit path and
+      // freezes this fixture's hash on chain when the fixture locks
+      // (kickoff-30m), so every accepted pick is inside the committed hash.
       const inserted = await db
         .select()
         .from(predictions)
         .where(eq(predictions.batchId, batch.id));
-      payloads.push(batchPayload(fresh ?? batch, inserted));
+      payloads.push(batchPayload(batch, inserted));
     }
 
     return c.json(payloads, anyCreated ? 201 : 200);

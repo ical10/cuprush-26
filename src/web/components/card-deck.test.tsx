@@ -84,6 +84,11 @@ describe("CardDeck batching", () => {
       { questionId: "q1", outcome: "yes" },
       { questionId: "q2", outcome: "no" },
     ]);
+
+    // Picks are saved immediately; the on-chain lock is deferred to kickoff.
+    expect(
+      await screen.findByText("Saved. Locks on Solana before kickoff."),
+    ).toBeInTheDocument();
   });
 
   it("hides questions the user already predicted (no reappearing after refresh)", async () => {
