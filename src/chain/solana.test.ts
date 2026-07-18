@@ -5,9 +5,12 @@ import { describe, expect, it } from "vitest";
 import { ChainError, isChainError, type ChainQuestionRule } from "./adapter";
 import { createChainAdapterFromEnv } from "./index";
 import {
-  BATCH_MEMO_PREFIX,
+  BATCH_MEMO_PREFIX_V1,
+  BATCH_MEMO_PREFIX_V2,
   MEMO_PROGRAM_ID,
+  buildBatchMemoV2,
   createSolanaChainAdapter,
+  parseBatchMemo,
   type FetchedTransaction,
   type SolanaRpc,
 } from "./solana";
@@ -16,8 +19,14 @@ import idlJson from "./idl/cuprush.json";
 const PROGRAM_ID = "9u7uuj7S8kMon564b4TA8Gc7RaYXSC5QgjDz8fFgmGCU";
 const AUTHORITY = Keypair.generate();
 const WALLET = Keypair.generate().publicKey.toBase58();
+const FIXTURE = "fixture-1";
 const RULE_HASH = "ab".repeat(32);
 const BLOCKHASH = Keypair.generate().publicKey.toBase58();
+
+/** v1 memo (legacy, no fixture segment) for the given wallet + hash. */
+function v1Memo(wallet: string, hash: string): string {
+  return `${BATCH_MEMO_PREFIX_V1}:${wallet}:${hash}`;
+}
 
 const coder = new BorshCoder(idlJson as Idl);
 
@@ -152,7 +161,42 @@ describe("solana adapter configuration (fail closed)", () => {
   it("is constructible offline (no RPC until first use)", () => {
     const adapter = createSolanaChainAdapter(env);
     expect(adapter.deriveQuestionPda(RULE_HASH)).toBeTypeOf("string");
-    expect(adapter.deriveBatchPda(WALLET)).toBeTypeOf("string");
+    expect(adapter.deriveBatchPda(WALLET, FIXTURE)).toBeTypeOf("string");
+  });
+});
+
+describe("batch memo format", () => {
+  const HASH = "b".repeat(64);
+
+  it("round-trips a v2 memo through build + parse", () => {
+    const memo = buildBatchMemoV2(WALLET, FIXTURE, HASH);
+    expect(memo).toBe(`${BATCH_MEMO_PREFIX_V2}:${WALLET}:${FIXTURE}:${HASH}`);
+    expect(parseBatchMemo(memo)).toEqual({
+      version: "v2",
+      wallet: WALLET,
+      fixtureId: FIXTURE,
+      batchHash: HASH,
+    });
+  });
+
+  it("still parses a legacy v1 memo (no fixture segment)", () => {
+    expect(parseBatchMemo(v1Memo(WALLET, HASH))).toEqual({
+      version: "v1",
+      wallet: WALLET,
+      batchHash: HASH,
+    });
+  });
+
+  it("rejects a fixtureId containing ':' at build time", () => {
+    expect(() => buildBatchMemoV2(WALLET, "round:1", HASH)).toThrowError(/':'/);
+  });
+
+  it("returns null for foreign or malformed memos", () => {
+    expect(parseBatchMemo("not-a-cuprush-memo")).toBeNull();
+    // Extra segment (would be an ambiguous fixtureId): rejected, not absorbed.
+    expect(parseBatchMemo(`${BATCH_MEMO_PREFIX_V2}:${WALLET}:a:b:${HASH}`)).toBeNull();
+    // v1 with a stray extra segment is likewise rejected.
+    expect(parseBatchMemo(`${BATCH_MEMO_PREFIX_V1}:${WALLET}:${HASH}:extra`)).toBeNull();
   });
 });
 
@@ -166,13 +210,28 @@ describe("solana PDA derivation", () => {
     expect(adapter.deriveQuestionPda(RULE_HASH)).toBe(expected.toBase58());
   });
 
-  it('derives the batch PDA from seeds [b"batch", wallet]', () => {
+  it('derives the batch PDA from seeds [b"batch", wallet, fixture_id]', () => {
     const adapter = adapterWith(fakeRpc());
     const [expected] = PublicKey.findProgramAddressSync(
-      [Buffer.from("batch"), new PublicKey(WALLET).toBuffer()],
+      [Buffer.from("batch"), new PublicKey(WALLET).toBuffer(), Buffer.from(FIXTURE, "utf8")],
       new PublicKey(PROGRAM_ID),
     );
-    expect(adapter.deriveBatchPda(WALLET)).toBe(expected.toBase58());
+    expect(adapter.deriveBatchPda(WALLET, FIXTURE)).toBe(expected.toBase58());
+  });
+
+  it("derives a distinct batch PDA per fixture for the same wallet", () => {
+    const adapter = adapterWith(fakeRpc());
+    expect(adapter.deriveBatchPda(WALLET, FIXTURE)).toBe(
+      adapter.deriveBatchPda(WALLET, FIXTURE),
+    );
+    expect(adapter.deriveBatchPda(WALLET, FIXTURE)).not.toBe(
+      adapter.deriveBatchPda(WALLET, "fixture-2"),
+    );
+  });
+
+  it("rejects a fixtureId containing ':' when deriving the batch PDA", () => {
+    const adapter = adapterWith(fakeRpc());
+    expect(() => adapter.deriveBatchPda(WALLET, "a:b")).toThrowError(/':'/);
   });
 
   it("is deterministic and different per input", () => {
@@ -307,15 +366,16 @@ describe("solana createQuestion", () => {
 describe("solana submitBatch (memo commitment)", () => {
   const HASH = "b".repeat(64);
 
-  it("commits the batch hash in a memo referencing the batch PDA", async () => {
+  it("commits the batch hash in a v2 memo referencing the batch PDA", async () => {
     const rpc = fakeRpc();
     const adapter = adapterWith(rpc);
 
     const { pda, signature } = await adapter.submitBatch({
       wallet: WALLET,
+      fixtureId: FIXTURE,
       batchHash: HASH,
     });
-    expect(pda).toBe(adapter.deriveBatchPda(WALLET));
+    expect(pda).toBe(adapter.deriveBatchPda(WALLET, FIXTURE));
     expect(signature).toBe("fake-signature-1");
 
     const instructions = instructionsOf(rpc.sent[0] as VersionedTransaction);
@@ -330,11 +390,23 @@ describe("solana submitBatch (memo commitment)", () => {
     const memo = instructions[1];
     expect(memo?.programId.equals(MEMO_PROGRAM_ID)).toBe(true);
     expect(memo?.data.toString("utf8")).toBe(
-      `${BATCH_MEMO_PREFIX}:${WALLET}:${HASH}`,
+      `${BATCH_MEMO_PREFIX_V2}:${WALLET}:${FIXTURE}:${HASH}`,
     );
   });
 
-  it("rejects a second batch for the same wallet with batch_exists", async () => {
+  it("rejects a ':' in fixtureId before any RPC call", async () => {
+    const rpc = fakeRpc({
+      getSignaturesForAddress: () =>
+        Promise.reject(new Error("must not be called")),
+    });
+    const adapter = adapterWith(rpc);
+    await expect(
+      adapter.submitBatch({ wallet: WALLET, fixtureId: "a:b", batchHash: HASH }),
+    ).rejects.toThrowError(/':'/);
+    expect(rpc.sent).toHaveLength(0);
+  });
+
+  it("rejects a second batch for the same (wallet, fixture) with batch_exists", async () => {
     const adapter = adapterWith(
       fakeRpc({
         getSignaturesForAddress: () =>
@@ -343,35 +415,39 @@ describe("solana submitBatch (memo commitment)", () => {
           Promise.resolve(
             batchCommitmentTx(
               AUTHORITY.publicKey,
-              `${BATCH_MEMO_PREFIX}:${WALLET}:${HASH}`,
+              `${BATCH_MEMO_PREFIX_V2}:${WALLET}:${FIXTURE}:${HASH}`,
             ),
           ),
       }),
     );
     await expect(
-      adapter.submitBatch({ wallet: WALLET, batchHash: "c".repeat(64) }),
+      adapter.submitBatch({
+        wallet: WALLET,
+        fixtureId: FIXTURE,
+        batchHash: "c".repeat(64),
+      }),
     ).rejects.toMatchObject({ code: "batch_exists" });
   });
 });
 
-describe("solana getBatch", () => {
+describe("solana getBatch (v2, per (wallet, fixture))", () => {
   const HASH = "d".repeat(64);
 
   it("returns null when nothing references the PDA", async () => {
     const adapter = adapterWith(fakeRpc());
-    expect(await adapter.getBatch(adapter.deriveBatchPda(WALLET))).toBeNull();
+    expect(await adapter.getBatch(WALLET, FIXTURE)).toBeNull();
   });
 
-  it("returns the oldest valid commitment and parses the memo", async () => {
+  it("returns the oldest valid v2 commitment for the pair", async () => {
     const txs: Record<string, FetchedTransaction> = {
       "sig-new": batchCommitmentTx(
         AUTHORITY.publicKey,
-        `${BATCH_MEMO_PREFIX}:${WALLET}:${"e".repeat(64)}`,
+        `${BATCH_MEMO_PREFIX_V2}:${WALLET}:${FIXTURE}:${"e".repeat(64)}`,
         1_751_000_100,
       ),
       "sig-old": batchCommitmentTx(
         AUTHORITY.publicKey,
-        `${BATCH_MEMO_PREFIX}:${WALLET}:${HASH}`,
+        `${BATCH_MEMO_PREFIX_V2}:${WALLET}:${FIXTURE}:${HASH}`,
         1_751_000_000,
       ),
     };
@@ -387,14 +463,47 @@ describe("solana getBatch", () => {
       }),
     );
 
-    const batch = await adapter.getBatch(adapter.deriveBatchPda(WALLET));
+    const batch = await adapter.getBatch(WALLET, FIXTURE);
     expect(batch).toMatchObject({
-      pda: adapter.deriveBatchPda(WALLET),
+      pda: adapter.deriveBatchPda(WALLET, FIXTURE),
       wallet: WALLET,
+      fixtureId: FIXTURE,
       batchHash: HASH,
       signature: "sig-old",
       submittedAt: new Date(1_751_000_000 * 1000),
     });
+  });
+
+  it("ignores a v2 commitment for a different fixture (no misattribution)", async () => {
+    const adapter = adapterWith(
+      fakeRpc({
+        getSignaturesForAddress: () =>
+          Promise.resolve([{ signature: "sig-other-fixture", blockTime: 1 }]),
+        getTransaction: () =>
+          Promise.resolve(
+            batchCommitmentTx(
+              AUTHORITY.publicKey,
+              // Same wallet, DIFFERENT fixture in the memo.
+              `${BATCH_MEMO_PREFIX_V2}:${WALLET}:fixture-2:${HASH}`,
+            ),
+          ),
+      }),
+    );
+    expect(await adapter.getBatch(WALLET, FIXTURE)).toBeNull();
+  });
+
+  it("never matches a legacy v1 memo (getBatch is v2-only)", async () => {
+    const adapter = adapterWith(
+      fakeRpc({
+        getSignaturesForAddress: () =>
+          Promise.resolve([{ signature: "sig-v1", blockTime: 1 }]),
+        getTransaction: () =>
+          Promise.resolve(
+            batchCommitmentTx(AUTHORITY.publicKey, v1Memo(WALLET, HASH)),
+          ),
+      }),
+    );
+    expect(await adapter.getBatch(WALLET, FIXTURE)).toBeNull();
   });
 
   it("ignores commitments not fee-paid by the adapter authority", async () => {
@@ -405,11 +514,14 @@ describe("solana getBatch", () => {
           Promise.resolve([{ signature: "sig-spoof", blockTime: 1 }]),
         getTransaction: () =>
           Promise.resolve(
-            batchCommitmentTx(spoofer, `${BATCH_MEMO_PREFIX}:${WALLET}:${HASH}`),
+            batchCommitmentTx(
+              spoofer,
+              `${BATCH_MEMO_PREFIX_V2}:${WALLET}:${FIXTURE}:${HASH}`,
+            ),
           ),
       }),
     );
-    expect(await adapter.getBatch(adapter.deriveBatchPda(WALLET))).toBeNull();
+    expect(await adapter.getBatch(WALLET, FIXTURE)).toBeNull();
   });
 
   it("ignores failed transactions and memos for other wallets", async () => {
@@ -426,13 +538,75 @@ describe("solana getBatch", () => {
             signature === "sig-other"
               ? batchCommitmentTx(
                   AUTHORITY.publicKey,
-                  `${BATCH_MEMO_PREFIX}:${otherWallet}:${HASH}`,
+                  `${BATCH_MEMO_PREFIX_V2}:${otherWallet}:${FIXTURE}:${HASH}`,
                 )
               : null,
           ),
       }),
     );
-    expect(await adapter.getBatch(adapter.deriveBatchPda(WALLET))).toBeNull();
+    expect(await adapter.getBatch(WALLET, FIXTURE)).toBeNull();
+  });
+});
+
+describe("solana getLegacyBatch (v1 bridge)", () => {
+  const HASH = "d".repeat(64);
+
+  it("returns the oldest valid v1 commitment for the wallet", async () => {
+    const adapter = adapterWith(
+      fakeRpc({
+        getSignaturesForAddress: () =>
+          Promise.resolve([
+            { signature: "sig-new", blockTime: 1_751_000_100 },
+            { signature: "sig-old", blockTime: 1_751_000_000 },
+          ]),
+        getTransaction: (signature) =>
+          Promise.resolve(
+            batchCommitmentTx(
+              AUTHORITY.publicKey,
+              v1Memo(WALLET, signature === "sig-old" ? HASH : "e".repeat(64)),
+              signature === "sig-old" ? 1_751_000_000 : 1_751_000_100,
+            ),
+          ),
+      }),
+    );
+
+    const batch = await adapter.getLegacyBatch(WALLET);
+    expect(batch).toMatchObject({
+      wallet: WALLET,
+      fixtureId: null,
+      batchHash: HASH,
+      signature: "sig-old",
+    });
+  });
+
+  it("never matches a v2 memo (getLegacyBatch is v1-only)", async () => {
+    const adapter = adapterWith(
+      fakeRpc({
+        getSignaturesForAddress: () =>
+          Promise.resolve([{ signature: "sig-v2", blockTime: 1 }]),
+        getTransaction: () =>
+          Promise.resolve(
+            batchCommitmentTx(
+              AUTHORITY.publicKey,
+              `${BATCH_MEMO_PREFIX_V2}:${WALLET}:${FIXTURE}:${HASH}`,
+            ),
+          ),
+      }),
+    );
+    expect(await adapter.getLegacyBatch(WALLET)).toBeNull();
+  });
+
+  it("ignores a v1 commitment not fee-paid by the adapter authority", async () => {
+    const spoofer = Keypair.generate().publicKey;
+    const adapter = adapterWith(
+      fakeRpc({
+        getSignaturesForAddress: () =>
+          Promise.resolve([{ signature: "sig-spoof", blockTime: 1 }]),
+        getTransaction: () =>
+          Promise.resolve(batchCommitmentTx(spoofer, v1Memo(WALLET, HASH))),
+      }),
+    );
+    expect(await adapter.getLegacyBatch(WALLET)).toBeNull();
   });
 });
 

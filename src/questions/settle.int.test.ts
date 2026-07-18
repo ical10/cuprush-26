@@ -1,5 +1,5 @@
 import { randomBytes, randomUUID } from "node:crypto";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import { afterAll, describe, expect, it, vi } from "vitest";
@@ -86,11 +86,12 @@ async function insertParticipant(overrides: Partial<typeof participants.$inferIn
   return row!;
 }
 
-async function confirmedBatch(participantId: string) {
+async function confirmedBatch(participantId: string, fixtureId: string) {
   const [row] = await db
     .insert(predictionBatches)
     .values({
       participantId,
+      fixtureId,
       batchHash: randomBytes(32).toString("hex"),
       chainStatus: "confirmed",
     })
@@ -100,7 +101,12 @@ async function confirmedBatch(participantId: string) {
   const [existing] = await db
     .select()
     .from(predictionBatches)
-    .where(eq(predictionBatches.participantId, participantId));
+    .where(
+      and(
+        eq(predictionBatches.participantId, participantId),
+        eq(predictionBatches.fixtureId, fixtureId),
+      ),
+    );
   return existing!;
 }
 
@@ -109,7 +115,11 @@ async function insertConfirmedPrediction(
   participantId: string,
   outcome: "yes" | "no" | "higher" | "lower",
 ) {
-  const batch = await confirmedBatch(participantId);
+  const [question] = await db
+    .select({ fixtureId: questions.fixtureId })
+    .from(questions)
+    .where(eq(questions.id, questionId));
+  const batch = await confirmedBatch(participantId, question!.fixtureId);
   const [row] = await db
     .insert(predictions)
     .values({ participantId, questionId, outcome, batchId: batch.id })

@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import {
   ChainError,
+  assertBatchFixtureId,
   type ChainAdapter,
   type ChainBatch,
   type ChainQuestion,
@@ -15,6 +16,9 @@ import {
  * PDA hash), one immutable batch per wallet, and single settlement. State
  * lives for the process lifetime only — Postgres plus the reconciler own
  * durability, exactly as they must against the real chain.
+ *
+ * The stub only speaks v2 (per-fixture) batches — it has no legacy v1 state,
+ * so `getLegacyBatch` always returns null.
  */
 
 const BASE58_ALPHABET =
@@ -70,8 +74,9 @@ export function createStubChainAdapter(
     return fakeAddress("question", Buffer.from(ruleHash, "hex"));
   }
 
-  function deriveBatchPda(wallet: string): string {
-    return fakeAddress("batch", wallet);
+  function deriveBatchPda(wallet: string, fixtureId: string): string {
+    assertBatchFixtureId(fixtureId);
+    return fakeAddress("batch", wallet, fixtureId);
   }
 
   return {
@@ -101,8 +106,13 @@ export function createStubChainAdapter(
       return Promise.resolve({ pda });
     },
 
-    submitBatch(input: { wallet: string; batchHash: string }) {
-      const pda = deriveBatchPda(input.wallet);
+    submitBatch(input: { wallet: string; fixtureId: string; batchHash: string }) {
+      let pda: string;
+      try {
+        pda = deriveBatchPda(input.wallet, input.fixtureId);
+      } catch (error) {
+        return Promise.reject(error);
+      }
       if (batches.has(pda)) {
         return Promise.reject(
           new ChainError("batch_exists", `batch account in use: ${pda}`),
@@ -113,6 +123,7 @@ export function createStubChainAdapter(
       batches.set(pda, {
         pda,
         wallet: input.wallet,
+        fixtureId: input.fixtureId,
         batchHash: input.batchHash,
         signature,
         submittedAt: clock(),
@@ -142,9 +153,20 @@ export function createStubChainAdapter(
       return Promise.resolve(question ? { ...question } : null);
     },
 
-    getBatch(pda: string) {
+    getBatch(wallet: string, fixtureId: string) {
+      let pda: string;
+      try {
+        pda = deriveBatchPda(wallet, fixtureId);
+      } catch (error) {
+        return Promise.reject(error);
+      }
       const batch = batches.get(pda);
       return Promise.resolve(batch ? { ...batch } : null);
+    },
+
+    // The stub has no legacy v1 commitments; everything it stores is v2.
+    getLegacyBatch(_wallet: string) {
+      return Promise.resolve(null);
     },
   };
 }

@@ -1,7 +1,7 @@
 import { motion } from "framer-motion";
 import { usePrefersReducedMotion } from "../hooks/use-reduced-motion";
 
-export type TxState = "saving" | "locked" | "failed";
+export type TxState = "saving" | "saved" | "locked" | "failed";
 
 type Props = {
   state: TxState;
@@ -29,6 +29,13 @@ export function TxStatus({ state, message, onRetry }: Props) {
       </p>
     );
   }
+  // saved: picks are stored and immutable, but the on-chain commitment is
+  // deferred — the reconciler freezes each fixture's hash on chain when it
+  // locks (kickoff-30m). locked: the commitment is confirmed on chain.
+  const label =
+    state === "saved"
+      ? "Saved. Locks on Solana before kickoff."
+      : "Locked on Solana.";
   return (
     <motion.div
       className="tx-locked-badge"
@@ -54,7 +61,7 @@ export function TxStatus({ state, message, onRetry }: Props) {
           strokeLinejoin="round"
         />
       </svg>
-      <span>Locked on Solana.</span>
+      <span>{label}</span>
     </motion.div>
   );
 }

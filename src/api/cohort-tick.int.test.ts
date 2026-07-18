@@ -10,6 +10,7 @@ import { AGENT_SEEDS, COHORT_NAME, seedAgents } from "../db/seed-agents";
 import { provisionAgents, type WalletCreator } from "../agents/provision";
 import { generateQuestionsForFixture } from "../questions/generate";
 import { createSettlementExecutor } from "../questions/settle";
+import { reconcilePendingBatches } from "../predictions/reconciler";
 import { createApp } from "./app";
 import { createDevAuthAdapter } from "./auth/dev";
 
@@ -48,7 +49,7 @@ async function truncateAll() {
 beforeAll(async () => {
   await truncateAll();
   const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-  app = createApp({ db, auth: createDevAuthAdapter({}), chain });
+  app = createApp({ db, auth: createDevAuthAdapter({}) });
   warn.mockRestore();
 });
 
@@ -310,8 +311,20 @@ describe("cohort full-tick integration", () => {
         .from(predictionBatches)
         .where(eq(predictionBatches.participantId, participantId));
       expect(batchRows).toHaveLength(1);
-      // Agents have wallets, so the shared chain path confirmed the batch.
-      expect(batchRows[0]!.chainStatus).toBe("confirmed");
+      // The decisions route never submits: the batch waits pending for the
+      // reconciler to commit it at lock.
+      expect(batchRows[0]!.chainStatus).toBe("pending");
+    }
+
+    // Once the fixture locks (kickoff-30m), the reconciler freezes every
+    // agent's batch hash on chain. All ten agents have wallets, so all confirm.
+    await reconcilePendingBatches(db, chain, new Date(Date.now() + 3 * 60 * 60_000));
+    for (const { participantId } of cohort) {
+      const [batch] = await db
+        .select()
+        .from(predictionBatches)
+        .where(eq(predictionBatches.participantId, participantId));
+      expect(batch!.chainStatus).toBe("confirmed");
     }
   });
 

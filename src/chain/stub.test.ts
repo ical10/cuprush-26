@@ -25,6 +25,7 @@ function rule(overrides: Partial<ChainQuestionRule> = {}): ChainQuestionRule {
 }
 
 const WALLET = "9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin";
+const FIXTURE = "fixture-1";
 
 describe("stub PDA derivation", () => {
   it("derives the same question PDA for the same rule hash", () => {
@@ -43,19 +44,30 @@ describe("stub PDA derivation", () => {
   it("derives base58 PDAs that fit the 44-char address columns", () => {
     const adapter = createStubChainAdapter({ clock });
     const questionPda = adapter.deriveQuestionPda("c".repeat(64));
-    const batchPda = adapter.deriveBatchPda(WALLET);
+    const batchPda = adapter.deriveBatchPda(WALLET, FIXTURE);
     for (const pda of [questionPda, batchPda]) {
       expect(pda).toMatch(BASE58);
       expect(pda.length).toBeLessThanOrEqual(44);
     }
   });
 
-  it("derives the batch PDA from the wallet deterministically", () => {
+  it("derives the batch PDA from (wallet, fixture) deterministically", () => {
     const adapter = createStubChainAdapter({ clock });
-    expect(adapter.deriveBatchPda(WALLET)).toBe(adapter.deriveBatchPda(WALLET));
-    expect(adapter.deriveBatchPda(WALLET)).not.toBe(
-      adapter.deriveBatchPda("5".repeat(43)),
+    expect(adapter.deriveBatchPda(WALLET, FIXTURE)).toBe(
+      adapter.deriveBatchPda(WALLET, FIXTURE),
     );
+    // Distinct per wallet and per fixture.
+    expect(adapter.deriveBatchPda(WALLET, FIXTURE)).not.toBe(
+      adapter.deriveBatchPda("5".repeat(43), FIXTURE),
+    );
+    expect(adapter.deriveBatchPda(WALLET, FIXTURE)).not.toBe(
+      adapter.deriveBatchPda(WALLET, "fixture-2"),
+    );
+  });
+
+  it("rejects a fixtureId containing the memo delimiter ':'", () => {
+    const adapter = createStubChainAdapter({ clock });
+    expect(() => adapter.deriveBatchPda(WALLET, "a:b")).toThrowError(/':'/);
   });
 });
 
@@ -106,41 +118,76 @@ describe("stub submitBatch", () => {
 
     const { pda, signature } = await adapter.submitBatch({
       wallet: WALLET,
+      fixtureId: FIXTURE,
       batchHash: HASH,
     });
 
-    expect(pda).toBe(adapter.deriveBatchPda(WALLET));
+    expect(pda).toBe(adapter.deriveBatchPda(WALLET, FIXTURE));
     expect(signature).toMatch(BASE58);
     expect(signature.length).toBeLessThanOrEqual(88);
 
-    const batch = await adapter.getBatch(pda);
+    const batch = await adapter.getBatch(WALLET, FIXTURE);
     expect(batch).toMatchObject({
       pda,
       wallet: WALLET,
+      fixtureId: FIXTURE,
       batchHash: HASH,
       signature,
       submittedAt: now,
     });
   });
 
-  it("rejects a second batch for the same wallet", async () => {
+  it("rejects a second batch for the same (wallet, fixture)", async () => {
     const adapter = createStubChainAdapter({ clock });
-    await adapter.submitBatch({ wallet: WALLET, batchHash: HASH });
+    await adapter.submitBatch({ wallet: WALLET, fixtureId: FIXTURE, batchHash: HASH });
 
     await expect(
-      adapter.submitBatch({ wallet: WALLET, batchHash: "c".repeat(64) }),
+      adapter.submitBatch({
+        wallet: WALLET,
+        fixtureId: FIXTURE,
+        batchHash: "c".repeat(64),
+      }),
     ).rejects.toMatchObject({ code: "batch_exists" });
 
-    const batch = await adapter.getBatch(adapter.deriveBatchPda(WALLET));
+    const batch = await adapter.getBatch(WALLET, FIXTURE);
     expect(batch?.batchHash).toBe(HASH);
+  });
+
+  it("lets the same wallet commit a different fixture as a new batch", async () => {
+    const adapter = createStubChainAdapter({ clock });
+    await adapter.submitBatch({ wallet: WALLET, fixtureId: FIXTURE, batchHash: HASH });
+
+    const other = await adapter.submitBatch({
+      wallet: WALLET,
+      fixtureId: "fixture-2",
+      batchHash: "c".repeat(64),
+    });
+    expect(other.pda).not.toBe(adapter.deriveBatchPda(WALLET, FIXTURE));
+
+    // Each pair reads back independently.
+    expect((await adapter.getBatch(WALLET, FIXTURE))?.batchHash).toBe(HASH);
+    expect((await adapter.getBatch(WALLET, "fixture-2"))?.batchHash).toBe(
+      "c".repeat(64),
+    );
   });
 
   it("allows different wallets to each submit a batch", async () => {
     const adapter = createStubChainAdapter({ clock });
-    await adapter.submitBatch({ wallet: WALLET, batchHash: HASH });
+    await adapter.submitBatch({ wallet: WALLET, fixtureId: FIXTURE, batchHash: HASH });
     await expect(
-      adapter.submitBatch({ wallet: "4".repeat(43), batchHash: HASH }),
+      adapter.submitBatch({
+        wallet: "4".repeat(43),
+        fixtureId: FIXTURE,
+        batchHash: HASH,
+      }),
     ).resolves.toBeDefined();
+  });
+
+  it("rejects a fixtureId containing ':'", async () => {
+    const adapter = createStubChainAdapter({ clock });
+    await expect(
+      adapter.submitBatch({ wallet: WALLET, fixtureId: "a:b", batchHash: HASH }),
+    ).rejects.toThrowError(/':'/);
   });
 });
 
@@ -174,7 +221,13 @@ describe("stub reads", () => {
   it("returns null for unknown PDAs", async () => {
     const adapter = createStubChainAdapter({ clock });
     expect(await adapter.getQuestion("unknown")).toBeNull();
-    expect(await adapter.getBatch("unknown")).toBeNull();
+    expect(await adapter.getBatch(WALLET, FIXTURE)).toBeNull();
+  });
+
+  it("has no legacy v1 commitments", async () => {
+    const adapter = createStubChainAdapter({ clock });
+    await adapter.submitBatch({ wallet: WALLET, fixtureId: FIXTURE, batchHash: "b".repeat(64) });
+    expect(await adapter.getLegacyBatch(WALLET)).toBeNull();
   });
 });
 

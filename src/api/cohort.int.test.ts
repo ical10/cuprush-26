@@ -6,6 +6,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { testDatabaseUrl } from "../db/test/test-db";
 import * as schema from "../db/schema";
 import { createStubChainAdapter } from "../chain";
+import { reconcilePendingBatches } from "../predictions/reconciler";
 import { createApp } from "./app";
 import { createDevAuthAdapter } from "./auth/dev";
 
@@ -29,7 +30,7 @@ let app: ReturnType<typeof createApp>;
 
 beforeAll(() => {
   const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-  app = createApp({ db, auth: createDevAuthAdapter({}), chain });
+  app = createApp({ db, auth: createDevAuthAdapter({}) });
   warn.mockRestore();
 });
 
@@ -149,15 +150,20 @@ async function insertQuestion(
   return question!;
 }
 
-async function ensureTestBatch(participantId: string) {
+async function ensureTestBatch(participantId: string, fixtureId: string) {
   const [existing] = await db
     .select()
     .from(predictionBatches)
-    .where(eq(predictionBatches.participantId, participantId));
+    .where(
+      and(
+        eq(predictionBatches.participantId, participantId),
+        eq(predictionBatches.fixtureId, fixtureId),
+      ),
+    );
   if (existing) return existing;
   const [created] = await db
     .insert(predictionBatches)
-    .values({ participantId, batchHash: "0".repeat(64) })
+    .values({ participantId, fixtureId, batchHash: "0".repeat(64) })
     .returning();
   return created!;
 }
@@ -169,7 +175,7 @@ async function insertSettledPrediction(
 ) {
   const { outcome = "yes", result = "yes" } = opts;
   const question = await insertQuestion({ status: "settled", result });
-  const batch = await ensureTestBatch(participantId);
+  const batch = await ensureTestBatch(participantId, question.fixtureId);
   await db.insert(predictions).values({
     participantId,
     questionId: question.id,
@@ -263,7 +269,7 @@ describe("POST /api/cohort/pending", () => {
     const { cohort, token } = await createCohort();
     const { participant, agentKey } = await createAgent(cohort.id);
     const answered = await insertQuestion();
-    const batch = await ensureTestBatch(participant.id);
+    const batch = await ensureTestBatch(participant.id, answered.fixtureId);
     await db.insert(predictions).values({
       participantId: participant.id,
       questionId: answered.id,
@@ -312,7 +318,7 @@ describe("POST /api/cohort/pending", () => {
 // --- submit -----------------------------------------------------------------
 
 describe("POST /api/cohort/decisions", () => {
-  it("happy path: stores a decision + prediction attributed to the right player, on chain", async () => {
+  it("happy path: stores a decision + prediction, committed on chain at lock", async () => {
     const { cohort, token } = await createCohort();
     const { participant, agentKey } = await createAgent(cohort.id);
     const question = await insertQuestion();
@@ -351,13 +357,26 @@ describe("POST /api/cohort/decisions", () => {
     expect(decision!.rationale).toBe("home side dominates possession");
     expect(Number(decision!.confidence)).toBeCloseTo(0.72);
 
+    // The decisions route stores the batch pending with a current hash and
+    // never submits on chain. The reconciler commits it once the fixture
+    // locks (kickoff-30m).
     const [batch] = await db
       .select()
       .from(predictionBatches)
       .where(eq(predictionBatches.participantId, participant.id));
-    expect(batch!.chainStatus).toBe("confirmed");
-    const onChain = await chain.getBatch(chain.deriveBatchPda(participant.walletAddress!));
-    expect(onChain?.batchHash).toBe(batch!.batchHash);
+    expect(batch!.chainStatus).toBe("pending");
+
+    await reconcilePendingBatches(db, chain, new Date(Date.now() + 61 * 60_000));
+    const [committed] = await db
+      .select()
+      .from(predictionBatches)
+      .where(eq(predictionBatches.id, batch!.id));
+    expect(committed!.chainStatus).toBe("confirmed");
+    const onChain = await chain.getBatch(
+      participant.walletAddress!,
+      committed!.fixtureId,
+    );
+    expect(onChain?.batchHash).toBe(committed!.batchHash);
   });
 
   it("rejects an agent_key that belongs to another cohort", async () => {

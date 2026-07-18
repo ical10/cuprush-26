@@ -9,6 +9,13 @@ describe("TxStatus", () => {
     expect(screen.getByRole("status")).toHaveTextContent("Saving your pick…");
   });
 
+  it("renders the saved copy with the deferred on-chain lock", () => {
+    render(<TxStatus state="saved" />);
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Saved. Locks on Solana before kickoff.",
+    );
+  });
+
   it("renders the locked confirmation copy", () => {
     render(<TxStatus state="locked" />);
     expect(screen.getByRole("status")).toHaveTextContent("Locked on Solana.");

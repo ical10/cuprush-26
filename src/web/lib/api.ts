@@ -43,7 +43,7 @@ export function fetchQuestions(): Promise<Question[]> {
 
 export function submitPredictionBatch(
   answers: BatchAnswer[],
-): Promise<PredictionBatch> {
+): Promise<PredictionBatch[]> {
   return request("/predictions/batch", {
     method: "POST",
     body: JSON.stringify({ answers }),

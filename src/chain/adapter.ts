@@ -34,17 +34,38 @@ export type ChainQuestion = ChainQuestionRule & {
 };
 
 /**
- * One batch commitment per player wallet: a single hash over all their
- * predictions (see src/predictions/hash.ts), stored on chain instead of one
- * account per answer. Seeds [b"batch", wallet].
+ * One batch commitment per (player wallet, fixture): a single hash over that
+ * player's predictions for one fixture (see src/predictions/hash.ts), stored
+ * on chain instead of one account per answer. Seeds [b"batch", wallet,
+ * fixture_id].
+ *
+ * `fixtureId` is null only for legacy v1 commitments (memo `...:batch:v1:...`,
+ * which predate per-fixture batches and carry no fixture segment). Everything
+ * written under the v2 memo carries its fixtureId.
  */
 export type ChainBatch = {
   pda: string;
   wallet: string;
+  fixtureId: string | null;
   batchHash: string;
   signature: string;
   submittedAt: Date;
 };
+
+/**
+ * A fixtureId is embedded verbatim in the batch memo between colon delimiters
+ * (`...:v2:<wallet>:<fixtureId>:<hash>`), so it must not itself contain ':'
+ * or the segments become ambiguous. Enforced wherever a batch memo/PDA is
+ * built. TxLINE fixture ids are colon-free, so this only ever rejects
+ * malformed input.
+ */
+export function assertBatchFixtureId(fixtureId: string): void {
+  if (fixtureId.includes(":")) {
+    throw new Error(
+      `fixtureId must not contain ':' (batch memo delimiter): ${fixtureId}`,
+    );
+  }
+}
 
 export type ChainErrorCode =
   | "invalid_window"
@@ -80,12 +101,13 @@ export interface ChainAdapter {
   readonly authorityPubkey: string;
   /** Deterministic Question address for seeds [b"question", rule_hash]. */
   deriveQuestionPda(ruleHash: string): string;
-  /** Deterministic Batch address for seeds [b"batch", wallet]. */
-  deriveBatchPda(wallet: string): string;
+  /** Deterministic Batch address for seeds [b"batch", wallet, fixture_id]. */
+  deriveBatchPda(wallet: string, fixtureId: string): string;
   createQuestion(rule: ChainQuestionRule): Promise<{ pda: string }>;
-  /** Commit one player's whole prediction batch by its hash. */
+  /** Commit one player's prediction batch for a fixture by its hash. */
   submitBatch(input: {
     wallet: string;
+    fixtureId: string;
     batchHash: string;
   }): Promise<{ pda: string; signature: string }>;
   settleQuestion(input: {
@@ -93,5 +115,18 @@ export interface ChainAdapter {
     result: ChainQuestionResult;
   }): Promise<{ signature: string }>;
   getQuestion(pda: string): Promise<ChainQuestion | null>;
-  getBatch(pda: string): Promise<ChainBatch | null>;
+  /**
+   * The v2 commitment for this exact (wallet, fixture) pair, oldest-valid
+   * wins. Never returns a legacy v1 commitment — those carry no fixtureId and
+   * can't be safely attributed to a fixture here; use `getLegacyBatch`.
+   */
+  getBatch(wallet: string, fixtureId: string): Promise<ChainBatch | null>;
+  /**
+   * The legacy v1 commitment for this wallet (memo `...:batch:v1:...`, no
+   * fixture segment), oldest-valid wins, or null. Callers bridge it to a
+   * specific fixture only after confirming the hash matches that fixture's
+   * batch — the hash is the content proof. Returns a ChainBatch with
+   * `fixtureId: null`.
+   */
+  getLegacyBatch(wallet: string): Promise<ChainBatch | null>;
 }
