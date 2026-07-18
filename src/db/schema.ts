@@ -229,20 +229,28 @@ export const predictionChainStatus = pgEnum("prediction_chain_status", [
 ]);
 
 /**
- * One batch per participant holds the on-chain commitment for all their
- * predictions (research doc "Prediction submission", batched variant). The
- * chain fields that used to live per-prediction row moved here: a single
- * batch hash is submitted on chain instead of one PDA per answer.
+ * One batch per participant per fixture holds the on-chain commitment for
+ * that fixture's predictions (research doc "Prediction submission", batched
+ * variant). The chain fields that used to live per-prediction row moved here:
+ * a single batch hash is submitted on chain instead of one PDA per answer.
+ * A participant answering across two fixtures gets two batches, each
+ * committing independently.
  */
 export const predictionBatches = pgTable(
   "prediction_batches",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    // One batch ever per participant — the whole deck commits at once.
+    // The batch's participant. Uniqueness is now the (participant, fixture)
+    // pair below — one batch per fixture, not one batch ever.
     participantId: uuid("participant_id")
       .notNull()
-      .unique()
       .references(() => participants.id, { onDelete: "restrict" }),
+    // The fixture this batch commits predictions for. Mirrors
+    // questions.fixture_id → fixtures.id (ON DELETE no action): fixtures are
+    // durable TxLINE rows, never deleted out from under a live batch.
+    fixtureId: text("fixture_id")
+      .notNull()
+      .references(() => fixtures.id),
     // sha256 hex of the canonical sorted questionId:outcome pairs — see
     // src/predictions/hash.ts. Recomputed server-side, never client-supplied.
     batchHash: text("batch_hash").notNull(),
@@ -263,6 +271,11 @@ export const predictionBatches = pgTable(
       .defaultNow(),
   },
   (batch) => [
+    // One batch per participant per fixture.
+    unique("prediction_batches_participant_fixture_unique").on(
+      batch.participantId,
+      batch.fixtureId,
+    ),
     check(
       "prediction_batches_attempt_count_nonnegative",
       sql`${batch.attemptCount} >= 0`,

@@ -324,6 +324,7 @@ export function createCohortRoutes(getDb: DbProvider, chain: ChainAdapter) {
 
       const predictionId = await insertDecision(db, {
         participantId,
+        fixtureId: question.fixtureId,
         item: parsed,
       });
       affected.add(participantId);
@@ -352,10 +353,10 @@ export function createCohortRoutes(getDb: DbProvider, chain: ChainAdapter) {
  */
 async function insertDecision(
   db: Database,
-  input: { participantId: string; item: DecisionItem },
+  input: { participantId: string; fixtureId: string; item: DecisionItem },
 ): Promise<string> {
-  const { participantId, item } = input;
-  const batch = await ensureBatch(db, participantId);
+  const { participantId, fixtureId, item } = input;
+  const batch = await ensureBatch(db, participantId, fixtureId);
 
   const [prediction] = await db
     .insert(predictions)
@@ -383,43 +384,57 @@ async function insertDecision(
 }
 
 /**
- * One prediction batch per participant (the schema's unique constraint). An
- * agent's decisions arrive across ticks, so the batch is created on the first
- * decision and extended in place afterward.
+ * One prediction batch per participant per fixture (the schema's unique
+ * constraint). An agent's decisions arrive across ticks and can span several
+ * fixtures, so a batch is created lazily per fixture on the first decision for
+ * it and extended in place afterward.
  */
 async function ensureBatch(
   db: Database,
   participantId: string,
+  fixtureId: string,
 ): Promise<BatchRow> {
   const [existing] = await db
     .select()
     .from(predictionBatches)
-    .where(eq(predictionBatches.participantId, participantId));
+    .where(
+      and(
+        eq(predictionBatches.participantId, participantId),
+        eq(predictionBatches.fixtureId, fixtureId),
+      ),
+    );
   if (existing) return existing;
 
   try {
     const [created] = await db
       .insert(predictionBatches)
-      .values({ participantId, batchHash: computeBatchHash([]) })
+      .values({ participantId, fixtureId, batchHash: computeBatchHash([]) })
       .returning();
     if (created) return created;
   } catch {
-    // Lost the one-batch-per-participant race: fall through to the winner.
+    // Lost the one-batch-per-(participant, fixture) race: fall through.
   }
   const [winner] = await db
     .select()
     .from(predictionBatches)
-    .where(eq(predictionBatches.participantId, participantId));
+    .where(
+      and(
+        eq(predictionBatches.participantId, participantId),
+        eq(predictionBatches.fixtureId, fixtureId),
+      ),
+    );
   if (!winner) throw new Error("batch upsert failed");
   return winner;
 }
 
 /**
- * Recomputes the participant's batch hash over every prediction now attached
- * and submits it on chain — but only while the batch is still pending. Once
- * the batch is confirmed on chain its hash is frozen (the batch PDA is
- * immutable), so later-tick predictions are stored and attributed but not
- * re-committed. Reuses the human submit path (submitPendingBatch).
+ * Recomputes each of the participant's pending batch hashes over the
+ * predictions now attached and submits them on chain — but only while a batch
+ * is still pending. A participant can hold one batch per fixture; each is
+ * committed independently. Once a batch is confirmed on chain its hash is
+ * frozen (the batch PDA is immutable), so later-tick predictions for it are
+ * stored and attributed but not re-committed. Reuses the human submit path
+ * (submitPendingBatch).
  */
 async function commitBatch(
   db: Database,
@@ -427,35 +442,38 @@ async function commitBatch(
   participantId: string,
   now: Date,
 ): Promise<void> {
-  const [batch] = await db
+  const batches = await db
     .select()
     .from(predictionBatches)
     .where(eq(predictionBatches.participantId, participantId));
-  if (!batch || batch.chainStatus !== "pending") return;
-
-  const rows = await db
-    .select({ questionId: predictions.questionId, outcome: predictions.outcome })
-    .from(predictions)
-    .where(eq(predictions.batchId, batch.id));
-  const batchHash = computeBatchHash(rows);
-
-  await db
-    .update(predictionBatches)
-    .set({ batchHash })
-    .where(eq(predictionBatches.id, batch.id));
 
   const [participant] = await db
     .select()
     .from(participants)
     .where(eq(participants.id, participantId));
 
-  // No wallet yet (or delegation revoked) → leave the batch pending for the
-  // reconciler, exactly as the human path does.
-  if (!participant?.walletAddress || participant.delegationRevokedAt) return;
+  for (const batch of batches) {
+    if (batch.chainStatus !== "pending") continue;
 
-  await submitPendingBatch(db, chain, {
-    batch: { ...batch, batchHash },
-    wallet: participant.walletAddress,
-    now,
-  });
+    const rows = await db
+      .select({ questionId: predictions.questionId, outcome: predictions.outcome })
+      .from(predictions)
+      .where(eq(predictions.batchId, batch.id));
+    const batchHash = computeBatchHash(rows);
+
+    await db
+      .update(predictionBatches)
+      .set({ batchHash })
+      .where(eq(predictionBatches.id, batch.id));
+
+    // No wallet yet (or delegation revoked) → leave the batch pending for the
+    // reconciler, exactly as the human path does.
+    if (!participant?.walletAddress || participant.delegationRevokedAt) continue;
+
+    await submitPendingBatch(db, chain, {
+      batch: { ...batch, batchHash },
+      wallet: participant.walletAddress,
+      now,
+    });
+  }
 }

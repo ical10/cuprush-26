@@ -31,10 +31,12 @@ const db = drizzle(sql, {
   },
 });
 
-async function insertBatch(participantId: string) {
+async function insertBatch(participantId: string, fixtureId?: string) {
+  const fid = fixtureId ?? `fixture-${randomUUID()}`;
+  if (!fixtureId) await insertFixture(fid);
   const [row] = await db
     .insert(predictionBatches)
-    .values({ participantId, batchHash: `hash-${randomUUID()}` })
+    .values({ participantId, fixtureId: fid, batchHash: `hash-${randomUUID()}` })
     .returning();
   if (!row) throw new Error("insert failed");
   return row;
@@ -147,17 +149,43 @@ describe("migrations", () => {
 });
 
 describe("prediction_batches constraints", () => {
-  it("enforces one batch per participant", async () => {
+  it("enforces one batch per participant per fixture", async () => {
     const participant = await insertParticipant();
-    await insertBatch(participant.id);
-    await expect(insertBatch(participant.id)).rejects.toThrow();
+    const fixtureId = `fixture-${randomUUID()}`;
+    await insertFixture(fixtureId);
+    await insertBatch(participant.id, fixtureId);
+    await expect(insertBatch(participant.id, fixtureId)).rejects.toThrow();
   });
 
-  it("rejects a negative attempt_count", async () => {
+  it("allows the same participant a batch in each of two fixtures", async () => {
+    const participant = await insertParticipant();
+    const fixtureA = `fixture-${randomUUID()}`;
+    const fixtureB = `fixture-${randomUUID()}`;
+    await insertFixture(fixtureA);
+    await insertFixture(fixtureB);
+    await insertBatch(participant.id, fixtureA);
+    await expect(insertBatch(participant.id, fixtureB)).resolves.toBeDefined();
+  });
+
+  it("rejects a batch referencing a missing fixture", async () => {
     const participant = await insertParticipant();
     await expect(
       db.insert(predictionBatches).values({
         participantId: participant.id,
+        fixtureId: `missing-${randomUUID()}`,
+        batchHash: "hash",
+      }),
+    ).rejects.toThrow();
+  });
+
+  it("rejects a negative attempt_count", async () => {
+    const participant = await insertParticipant();
+    const fixtureId = `fixture-${randomUUID()}`;
+    await insertFixture(fixtureId);
+    await expect(
+      db.insert(predictionBatches).values({
+        participantId: participant.id,
+        fixtureId,
         batchHash: "hash",
         attemptCount: -1,
       }),
@@ -254,7 +282,7 @@ describe("predictions constraints", () => {
     const fixtureId = `fixture-${randomUUID()}`;
     await insertFixture(fixtureId);
     const question = await insertQuestion(fixtureId, `rule-${randomUUID()}`);
-    const batch = await insertBatch(participant.id);
+    const batch = await insertBatch(participant.id, fixtureId);
 
     await db.insert(predictions).values({
       participantId: participant.id,
@@ -278,7 +306,7 @@ describe("predictions constraints", () => {
     const fixtureId = `fixture-${randomUUID()}`;
     await insertFixture(fixtureId);
     const question = await insertQuestion(fixtureId, `rule-${randomUUID()}`);
-    const batch = await insertBatch(participant.id);
+    const batch = await insertBatch(participant.id, fixtureId);
 
     await db.insert(predictions).values({
       participantId: participant.id,

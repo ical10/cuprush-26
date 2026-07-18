@@ -105,6 +105,26 @@ async function insertOpenQuestion(
   return question!;
 }
 
+/** A bare fixture row — a batch needs one for its NOT NULL fixture_id FK. */
+async function newFixture() {
+  const fixtureId = `fx-${randomUUID().slice(0, 18)}`;
+  await db.insert(fixtures).values({
+    id: fixtureId,
+    homeTeam: "Argentina",
+    awayTeam: "France",
+    startsAt: new Date(Date.now() + 90 * 60_000),
+  });
+  return fixtureId;
+}
+
+type BatchBody = {
+  id: string;
+  batchHash: string;
+  chainStatus: string;
+  signature: string | null;
+  predictions: { questionId: string; outcome: string }[];
+};
+
 function postBatch(token: string, answers: unknown, appInstance = app) {
   return appInstance.request(
     "/api/predictions/batch",
@@ -137,10 +157,11 @@ function failingChain(failures: number): ChainAdapter {
 }
 
 describe("POST /api/predictions/batch", () => {
-  it("happy path: inserts all predictions, confirms the batch on chain", async () => {
+  it("happy path: one fixture's picks become a single confirmed batch", async () => {
     const { token, wallet } = await participantWithWallet();
     const q1 = await insertOpenQuestion();
-    const q2 = await insertOpenQuestion();
+    // Second question on the SAME fixture -> one batch.
+    const q2 = await insertOpenQuestion({ fixtureId: q1.fixtureId });
     const answers = [
       { questionId: q1.id, outcome: "yes" },
       { questionId: q2.id, outcome: "no" },
@@ -149,52 +170,74 @@ describe("POST /api/predictions/batch", () => {
     const res = await postBatch(token, answers);
     expect(res.status).toBe(201);
 
-    const body: {
-      id: string;
-      batchHash: string;
-      chainStatus: string;
-      signature: string | null;
-      predictions: { questionId: string; outcome: string }[];
-    } = await res.json();
+    const body: BatchBody[] = await res.json();
+    expect(body).toHaveLength(1);
+    const batch = body[0]!;
 
-    expect(body.chainStatus).toBe("confirmed");
-    expect(body.signature).toMatch(/^[1-9A-HJ-NP-Za-km-z]+$/);
-    expect(body.predictions).toHaveLength(2);
+    expect(batch.chainStatus).toBe("confirmed");
+    expect(batch.signature).toMatch(/^[1-9A-HJ-NP-Za-km-z]+$/);
+    expect(batch.predictions).toHaveLength(2);
     // Server computed the hash canonically from the inserted answers.
-    expect(body.batchHash).toBe(computeBatchHash(answers));
+    expect(batch.batchHash).toBe(computeBatchHash(answers));
 
     const rows = await db
       .select()
       .from(predictions)
-      .where(eq(predictions.batchId, body.id));
+      .where(eq(predictions.batchId, batch.id));
     expect(rows).toHaveLength(2);
 
     // The chain holds the batch at the deterministic wallet PDA.
     const onChain = await chain.getBatch(chain.deriveBatchPda(wallet));
-    expect(onChain?.batchHash).toBe(body.batchHash);
+    expect(onChain?.batchHash).toBe(batch.batchHash);
   });
 
-  it("resubmit returns the existing batch, never a second batch or chain call", async () => {
+  it("splits a two-fixture deck into one batch per fixture, hashed separately", async () => {
+    const { token, participantId } = await participantWithWallet();
+    const q1 = await insertOpenQuestion();
+    const q2 = await insertOpenQuestion(); // different fixture
+
+    const res = await postBatch(token, [
+      { questionId: q1.id, outcome: "yes" },
+      { questionId: q2.id, outcome: "no" },
+    ]);
+    expect(res.status).toBe(201);
+
+    const body: BatchBody[] = await res.json();
+    expect(body).toHaveLength(2);
+    // Each batch carries exactly its fixture's single answer, hashed on its own.
+    for (const b of body) expect(b.predictions).toHaveLength(1);
+    expect(new Set(body.map((b) => b.batchHash)).size).toBe(2);
+
+    // Two batch rows, one per distinct fixture.
+    const batchRows = await db
+      .select()
+      .from(predictionBatches)
+      .where(eq(predictionBatches.participantId, participantId));
+    expect(batchRows).toHaveLength(2);
+    expect(new Set(batchRows.map((r) => r.fixtureId))).toEqual(
+      new Set([q1.fixtureId, q2.fixtureId]),
+    );
+  });
+
+  it("resubmit for a fixture returns its existing batch, never a second batch or chain call", async () => {
     const { token } = await participantWithWallet();
     const q1 = await insertOpenQuestion();
-    const q2 = await insertOpenQuestion();
+    // Same fixture as q1 -> a resubmit targets the same batch.
+    const q2 = await insertOpenQuestion({ fixtureId: q1.fixtureId });
     const spy = vi.spyOn(chain, "submitBatch");
 
     const first = await postBatch(token, [{ questionId: q1.id, outcome: "yes" }]);
     expect(first.status).toBe(201);
-    const firstBody: { id: string } = await first.json();
+    const firstBody: BatchBody[] = await first.json();
     const callsAfterFirst = spy.mock.calls.length;
 
     // A different answer set on resubmit is ignored — one immutable batch.
     const second = await postBatch(token, [{ questionId: q2.id, outcome: "no" }]);
     expect(second.status).toBe(200);
-    const secondBody: {
-      id: string;
-      predictions: { questionId: string }[];
-    } = await second.json();
+    const secondBody: BatchBody[] = await second.json();
 
-    expect(secondBody.id).toBe(firstBody.id);
-    expect(secondBody.predictions).toEqual([
+    expect(secondBody[0]!.id).toBe(firstBody[0]!.id);
+    expect(secondBody[0]!.predictions).toEqual([
       { questionId: q1.id, outcome: "yes" },
     ]);
     expect(spy.mock.calls.length).toBe(callsAfterFirst);
@@ -329,8 +372,8 @@ describe("POST /api/predictions/batch", () => {
 
     const res = await postBatch(token, [{ questionId: q.id, outcome: "yes" }], flakyApp);
     expect(res.status).toBe(201);
-    const body: { chainStatus: string } = await res.json();
-    expect(body.chainStatus).toBe("pending");
+    const body: BatchBody[] = await res.json();
+    expect(body[0]!.chainStatus).toBe("pending");
 
     const row = await batchRow(participantId);
     expect(row.chainStatus).toBe("pending");
@@ -412,7 +455,7 @@ describe("batch reconciler", () => {
     // ...but the process died before the row left pending.
     const [row] = await db
       .insert(predictionBatches)
-      .values({ participantId, batchHash: "a".repeat(64) })
+      .values({ participantId, fixtureId: await newFixture(), batchHash: "a".repeat(64) })
       .returning();
 
     const spy = vi.spyOn(adapter, "submitBatch");
@@ -435,7 +478,7 @@ describe("batch reconciler", () => {
     const { participantId } = await participantWithWallet();
     const [row] = await db
       .insert(predictionBatches)
-      .values({ participantId, batchHash: "b".repeat(64) })
+      .values({ participantId, fixtureId: await newFixture(), batchHash: "b".repeat(64) })
       .returning();
 
     const firstTick = new Date();
@@ -464,7 +507,7 @@ describe("submitPendingBatch", () => {
     const { participantId, wallet } = await participantWithWallet();
     const [row] = await db
       .insert(predictionBatches)
-      .values({ participantId, batchHash: "c".repeat(64) })
+      .values({ participantId, fixtureId: await newFixture(), batchHash: "c".repeat(64) })
       .returning();
 
     const first = await submitPendingBatch(db, adapter, { batch: row!, wallet });

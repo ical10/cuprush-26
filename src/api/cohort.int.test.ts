@@ -149,15 +149,20 @@ async function insertQuestion(
   return question!;
 }
 
-async function ensureTestBatch(participantId: string) {
+async function ensureTestBatch(participantId: string, fixtureId: string) {
   const [existing] = await db
     .select()
     .from(predictionBatches)
-    .where(eq(predictionBatches.participantId, participantId));
+    .where(
+      and(
+        eq(predictionBatches.participantId, participantId),
+        eq(predictionBatches.fixtureId, fixtureId),
+      ),
+    );
   if (existing) return existing;
   const [created] = await db
     .insert(predictionBatches)
-    .values({ participantId, batchHash: "0".repeat(64) })
+    .values({ participantId, fixtureId, batchHash: "0".repeat(64) })
     .returning();
   return created!;
 }
@@ -169,7 +174,7 @@ async function insertSettledPrediction(
 ) {
   const { outcome = "yes", result = "yes" } = opts;
   const question = await insertQuestion({ status: "settled", result });
-  const batch = await ensureTestBatch(participantId);
+  const batch = await ensureTestBatch(participantId, question.fixtureId);
   await db.insert(predictions).values({
     participantId,
     questionId: question.id,
@@ -263,7 +268,7 @@ describe("POST /api/cohort/pending", () => {
     const { cohort, token } = await createCohort();
     const { participant, agentKey } = await createAgent(cohort.id);
     const answered = await insertQuestion();
-    const batch = await ensureTestBatch(participant.id);
+    const batch = await ensureTestBatch(participant.id, answered.fixtureId);
     await db.insert(predictions).values({
       participantId: participant.id,
       questionId: answered.id,

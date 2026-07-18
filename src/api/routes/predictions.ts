@@ -1,4 +1,4 @@
-import { desc, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { Hono } from "hono";
 import { z } from "zod";
 import {
@@ -120,20 +120,6 @@ export function createPredictionRoutes(
 
     const db = await getDb();
 
-    // One batch ever per participant — a resubmit returns the existing one
-    // unchanged (immutable choice), never a second batch or chain call.
-    const [existing] = await db
-      .select()
-      .from(predictionBatches)
-      .where(eq(predictionBatches.participantId, participant.id));
-    if (existing) {
-      const rows = await db
-        .select()
-        .from(predictions)
-        .where(eq(predictions.batchId, existing.id));
-      return c.json(batchPayload(existing, rows), 200);
-    }
-
     // Load every referenced question + its fixture in one shot.
     const rows = await db
       .select({ question: questions, fixture: fixtures })
@@ -169,56 +155,100 @@ export function createPredictionRoutes(
       return c.json({ error: "predictions are locked for this batch" }, 409);
     }
 
-    const batchHash = computeBatchHash(answers);
-
-    let batch: BatchRow;
-    try {
-      batch = await db.transaction(async (tx) => {
-        const [created] = await tx
-          .insert(predictionBatches)
-          .values({ participantId: participant.id, batchHash })
-          .returning();
-        if (!created) throw new Error("batch insert failed");
-
-        await tx.insert(predictions).values(
-          answers.map((answer) => ({
-            participantId: participant.id,
-            questionId: answer.questionId,
-            outcome: answer.outcome,
-            batchId: created.id,
-          })),
-        );
-        return created;
-      });
-    } catch {
-      // Lost the one-batch-per-participant race: return the winner.
-      const [winner] = await db
-        .select()
-        .from(predictionBatches)
-        .where(eq(predictionBatches.participantId, participant.id));
-      if (!winner) return c.json({ error: "batch submission failed" }, 500);
-      const rows2 = await db
-        .select()
-        .from(predictions)
-        .where(eq(predictions.batchId, winner.id));
-      return c.json(batchPayload(winner, rows2), 200);
+    // A deck can span multiple fixtures (the cutoff above is the earliest
+    // kickoff across them). Each fixture commits as its own batch — the
+    // schema now keys uniqueness on (participant, fixture) — hashed over just
+    // that fixture's answers. Resubmitting a fixture returns its existing
+    // batch unchanged (immutable choice), never a second batch or chain call.
+    const byFixture = new Map<string, typeof answers>();
+    for (const answer of answers) {
+      const fixtureId = byId.get(answer.questionId)!.fixture.id;
+      const group = byFixture.get(fixtureId) ?? [];
+      group.push(answer);
+      byFixture.set(fixtureId, group);
     }
 
-    await submitPendingBatch(db, chain, {
-      batch,
-      wallet: participant.walletAddress,
-      now,
-    });
+    const payloads: ReturnType<typeof batchPayload>[] = [];
+    let anyCreated = false;
 
-    const [fresh] = await db
-      .select()
-      .from(predictionBatches)
-      .where(eq(predictionBatches.id, batch.id));
-    const inserted = await db
-      .select()
-      .from(predictions)
-      .where(eq(predictions.batchId, batch.id));
-    return c.json(batchPayload(fresh ?? batch, inserted), 201);
+    for (const [fixtureId, group] of byFixture) {
+      const [existing] = await db
+        .select()
+        .from(predictionBatches)
+        .where(
+          and(
+            eq(predictionBatches.participantId, participant.id),
+            eq(predictionBatches.fixtureId, fixtureId),
+          ),
+        );
+      if (existing) {
+        const rows2 = await db
+          .select()
+          .from(predictions)
+          .where(eq(predictions.batchId, existing.id));
+        payloads.push(batchPayload(existing, rows2));
+        continue;
+      }
+
+      const batchHash = computeBatchHash(group);
+      let batch: BatchRow;
+      try {
+        batch = await db.transaction(async (tx) => {
+          const [created] = await tx
+            .insert(predictionBatches)
+            .values({ participantId: participant.id, fixtureId, batchHash })
+            .returning();
+          if (!created) throw new Error("batch insert failed");
+
+          await tx.insert(predictions).values(
+            group.map((answer) => ({
+              participantId: participant.id,
+              questionId: answer.questionId,
+              outcome: answer.outcome,
+              batchId: created.id,
+            })),
+          );
+          return created;
+        });
+      } catch {
+        // Lost the one-batch-per-(participant, fixture) race: return the winner.
+        const [winner] = await db
+          .select()
+          .from(predictionBatches)
+          .where(
+            and(
+              eq(predictionBatches.participantId, participant.id),
+              eq(predictionBatches.fixtureId, fixtureId),
+            ),
+          );
+        if (!winner) return c.json({ error: "batch submission failed" }, 500);
+        const rows2 = await db
+          .select()
+          .from(predictions)
+          .where(eq(predictions.batchId, winner.id));
+        payloads.push(batchPayload(winner, rows2));
+        continue;
+      }
+
+      anyCreated = true;
+      await submitPendingBatch(db, chain, {
+        batch,
+        wallet: participant.walletAddress,
+        now,
+      });
+
+      const [fresh] = await db
+        .select()
+        .from(predictionBatches)
+        .where(eq(predictionBatches.id, batch.id));
+      const inserted = await db
+        .select()
+        .from(predictions)
+        .where(eq(predictions.batchId, batch.id));
+      payloads.push(batchPayload(fresh ?? batch, inserted));
+    }
+
+    return c.json(payloads, anyCreated ? 201 : 200);
   });
 
   app.get("/predictions", requireAuth, async (c) => {
