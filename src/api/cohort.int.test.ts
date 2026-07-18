@@ -361,7 +361,10 @@ describe("POST /api/cohort/decisions", () => {
       .from(predictionBatches)
       .where(eq(predictionBatches.participantId, participant.id));
     expect(batch!.chainStatus).toBe("confirmed");
-    const onChain = await chain.getBatch(chain.deriveBatchPda(participant.walletAddress!));
+    const onChain = await chain.getBatch(
+      participant.walletAddress!,
+      batch!.fixtureId,
+    );
     expect(onChain?.batchHash).toBe(batch!.batchHash);
   });
 

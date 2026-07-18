@@ -11,14 +11,14 @@ import {
 /**
  * Postgres <-> chain state machine for prediction batches (research doc
  * "Idempotency, ordering, and recovery", batched variant). One batch per
- * participant carries the on-chain commitment for their whole deck, so the
- * dual-write retry logic lives here at the batch level:
+ * (participant, fixture) carries the on-chain commitment for that fixture's
+ * predictions, so the dual-write retry logic lives here at the batch level:
  *
  * - Postgres-first crash (batch row pending, chain never reached): retry the
  *   sponsored submission with capped exponential backoff.
  * - Chain-first crash (batch on chain, row still pending): the Batch PDA is
- *   deterministic from the wallet, so a reconciler pass reads it back and
- *   repairs the row to confirmed.
+ *   deterministic from (wallet, fixture), so a reconciler pass reads it back
+ *   and repairs the row to confirmed.
  *
  * `submitPendingBatch` is the single submit path used by both the API route
  * (first attempt) and the periodic reconciler (retries + repair).
@@ -150,21 +150,33 @@ export async function submitPendingBatch(
   },
 ): Promise<"confirmed" | "pending"> {
   const { batch, wallet } = input;
+  const fixtureId = batch.fixtureId;
   const now = input.now ?? new Date();
 
   try {
-    const batchPda = adapter.deriveBatchPda(wallet);
-
-    // Chain-first crash repair: the deterministic PDA may already hold this
-    // batch even though the row is still pending.
-    const existing = await adapter.getBatch(batchPda);
+    // Chain-first crash repair: the deterministic (wallet, fixture) PDA may
+    // already hold this batch even though the row is still pending.
+    const existing = await adapter.getBatch(wallet, fixtureId);
     if (existing) {
       await markConfirmed(db, batch.id, existing, now);
       return "confirmed";
     }
 
+    // Legacy v1 bridge: a pre-per-fixture commitment (the semifinal) carries
+    // no fixture, so it can only be attributed to this fixture when its hash
+    // matches this row's hash — the hash is the content proof, which makes
+    // the wildcard safe. Only the one row whose predictions produced that
+    // hash bridges; every other fixture's row has a different hash and falls
+    // through to a normal v2 submit.
+    const legacy = await adapter.getLegacyBatch(wallet);
+    if (legacy && legacy.batchHash === batch.batchHash) {
+      await markConfirmed(db, batch.id, legacy, now);
+      return "confirmed";
+    }
+
     const { pda, signature } = await adapter.submitBatch({
       wallet,
+      fixtureId,
       batchHash: batch.batchHash,
     });
     await markConfirmed(db, batch.id, { pda, signature, submittedAt: now }, now);
@@ -172,7 +184,7 @@ export async function submitPendingBatch(
   } catch (error) {
     if (isChainError(error, "batch_exists")) {
       // Raced with another submit of the same batch: read it back.
-      const onChain = await adapter.getBatch(adapter.deriveBatchPda(wallet));
+      const onChain = await adapter.getBatch(wallet, fixtureId);
       if (onChain) {
         await markConfirmed(db, batch.id, onChain, now);
         return "confirmed";

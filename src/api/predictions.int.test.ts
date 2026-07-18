@@ -186,8 +186,8 @@ describe("POST /api/predictions/batch", () => {
       .where(eq(predictions.batchId, batch.id));
     expect(rows).toHaveLength(2);
 
-    // The chain holds the batch at the deterministic wallet PDA.
-    const onChain = await chain.getBatch(chain.deriveBatchPda(wallet));
+    // The chain holds the batch at the deterministic (wallet, fixture) PDA.
+    const onChain = await chain.getBatch(wallet, q1.fixtureId);
     expect(onChain?.batchHash).toBe(batch.batchHash);
   });
 
@@ -451,11 +451,16 @@ describe("batch reconciler", () => {
     const { participantId, wallet } = await participantWithWallet();
 
     // Chain submit succeeded...
-    const submitted = await adapter.submitBatch({ wallet, batchHash: "a".repeat(64) });
+    const fixtureId = await newFixture();
+    const submitted = await adapter.submitBatch({
+      wallet,
+      fixtureId,
+      batchHash: "a".repeat(64),
+    });
     // ...but the process died before the row left pending.
     const [row] = await db
       .insert(predictionBatches)
-      .values({ participantId, fixtureId: await newFixture(), batchHash: "a".repeat(64) })
+      .values({ participantId, fixtureId, batchHash: "a".repeat(64) })
       .returning();
 
     const spy = vi.spyOn(adapter, "submitBatch");

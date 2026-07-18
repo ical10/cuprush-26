@@ -85,26 +85,44 @@ describe.skipIf(!configured)("solana adapter on devnet", () => {
   );
 
   it(
-    "commits one immutable batch per wallet and reads it back",
+    "commits one immutable batch per (wallet, fixture) and reads it back",
     { timeout: TX_TIMEOUT_MS },
     async () => {
       const wallet = Keypair.generate().publicKey.toBase58();
+      const fixtureId = `int-batch-${Date.now()}`;
       const batchHash = randomBytes(32).toString("hex");
 
-      const { pda, signature } = await adapter.submitBatch({ wallet, batchHash });
-      expect(pda).toBe(adapter.deriveBatchPda(wallet));
+      const { pda, signature } = await adapter.submitBatch({
+        wallet,
+        fixtureId,
+        batchHash,
+      });
+      expect(pda).toBe(adapter.deriveBatchPda(wallet, fixtureId));
       expect(signature).toBeTypeOf("string");
 
-      const onChain = await adapter.getBatch(pda);
-      expect(onChain).toMatchObject({ pda, wallet, batchHash, signature });
+      const onChain = await adapter.getBatch(wallet, fixtureId);
+      expect(onChain).toMatchObject({ pda, wallet, fixtureId, batchHash, signature });
       expect(onChain?.submittedAt).toBeInstanceOf(Date);
 
       await expect(
-        adapter.submitBatch({ wallet, batchHash: randomBytes(32).toString("hex") }),
+        adapter.submitBatch({
+          wallet,
+          fixtureId,
+          batchHash: randomBytes(32).toString("hex"),
+        }),
       ).rejects.toSatisfy((error) => isChainError(error, "batch_exists"));
 
-      const untouched = await adapter.getBatch(pda);
+      const untouched = await adapter.getBatch(wallet, fixtureId);
       expect(untouched?.batchHash).toBe(batchHash);
+
+      // A different fixture for the same wallet is a fresh, independent batch.
+      const otherFixture = `${fixtureId}-b`;
+      const other = await adapter.submitBatch({
+        wallet,
+        fixtureId: otherFixture,
+        batchHash: randomBytes(32).toString("hex"),
+      });
+      expect(other.pda).not.toBe(pda);
     },
   );
 });

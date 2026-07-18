@@ -19,6 +19,7 @@ const { BN, BorshCoder, utils } = anchorPkg;
 type BN = BNValue;
 import {
   ChainError,
+  assertBatchFixtureId,
   isChainError,
   type ChainAdapter,
   type ChainBatch,
@@ -39,13 +40,21 @@ import idlJson from "./idl/cuprush.json";
  * Batches have no program instruction (the program predates the batched
  * prediction model and its Rust is frozen), so the batch commitment is
  * bridged: `submitBatch` lands one transaction that (a) references the
- * deterministic batch PDA at seeds [b"batch", wallet] so the commitment is
- * discoverable by address, and (b) records `wallet:batchHash` in an SPL
- * Memo instruction. `getBatch` reads it back via getSignaturesForAddress
- * and only trusts transactions fee-paid by this adapter's authority, so a
- * third party cannot spoof a commitment. First valid transaction wins —
- * later writes never change what `getBatch` returns, mirroring the
- * program's init-once semantics.
+ * deterministic batch PDA at seeds [b"batch", wallet, fixture_id] so the
+ * commitment is discoverable by address, and (b) records
+ * `v2:wallet:fixtureId:batchHash` in an SPL Memo instruction. `getBatch`
+ * reads it back via getSignaturesForAddress and only trusts transactions
+ * fee-paid by this adapter's authority, so a third party cannot spoof a
+ * commitment. First valid transaction wins — later writes never change what
+ * `getBatch` returns, mirroring the program's init-once semantics.
+ *
+ * Two memo versions coexist. v1 (`cuprush26:batch:v1:<wallet>:<hash>`) is the
+ * pre-per-fixture format; production holds real v1 commitments (the
+ * semifinal) so it stays parseable, but only via the explicit
+ * `getLegacyBatch(wallet)` — v1 carries no fixture segment and its PDA is
+ * seeded per wallet only. v2
+ * (`cuprush26:batch:v2:<wallet>:<fixtureId>:<hash>`) is per (wallet, fixture)
+ * and is all `getBatch(wallet, fixtureId)` will ever match.
  *
  * Construction is offline: env is validated fail-closed, but the RPC
  * connection is only opened on first use.
@@ -63,8 +72,48 @@ export const MEMO_PROGRAM_ID = new PublicKey(
   "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr",
 );
 
-/** Version-tagged memo prefix identifying a CupRush batch commitment. */
-export const BATCH_MEMO_PREFIX = "cuprush26:batch:v1";
+/** Legacy (pre-per-fixture) memo prefix: `...:v1:<wallet>:<hash>`. */
+export const BATCH_MEMO_PREFIX_V1 = "cuprush26:batch:v1";
+/** Per-fixture memo prefix: `...:v2:<wallet>:<fixtureId>:<hash>`. */
+export const BATCH_MEMO_PREFIX_V2 = "cuprush26:batch:v2";
+
+type ParsedBatchMemo =
+  | { version: "v1"; wallet: string; batchHash: string }
+  | { version: "v2"; wallet: string; fixtureId: string; batchHash: string };
+
+/**
+ * Parses a memo string into a batch commitment, or null if it is not a
+ * well-formed CupRush batch memo. Segment counts are exact — a stray colon
+ * (extra segment) is rejected rather than silently absorbed, so a v2
+ * fixtureId can never be confused with a hash and vice versa.
+ */
+export function parseBatchMemo(memo: string): ParsedBatchMemo | null {
+  if (memo.startsWith(`${BATCH_MEMO_PREFIX_V2}:`)) {
+    const parts = memo.slice(BATCH_MEMO_PREFIX_V2.length + 1).split(":");
+    if (parts.length !== 3) return null;
+    const [wallet, fixtureId, batchHash] = parts;
+    if (!wallet || !fixtureId || !batchHash) return null;
+    return { version: "v2", wallet, fixtureId, batchHash };
+  }
+  if (memo.startsWith(`${BATCH_MEMO_PREFIX_V1}:`)) {
+    const parts = memo.slice(BATCH_MEMO_PREFIX_V1.length + 1).split(":");
+    if (parts.length !== 2) return null;
+    const [wallet, batchHash] = parts;
+    if (!wallet || !batchHash) return null;
+    return { version: "v1", wallet, batchHash };
+  }
+  return null;
+}
+
+/** Builds the v2 batch memo, rejecting a fixtureId that carries a ':'. */
+export function buildBatchMemoV2(
+  wallet: string,
+  fixtureId: string,
+  batchHash: string,
+): string {
+  assertBatchFixtureId(fixtureId);
+  return `${BATCH_MEMO_PREFIX_V2}:${wallet}:${fixtureId}:${batchHash}`;
+}
 
 const QUESTION_SEED = Buffer.from("question");
 const BATCH_SEED = Buffer.from("batch");
@@ -295,7 +344,17 @@ export function createSolanaChainAdapter(
     return pda.toBase58();
   }
 
-  function deriveBatchPda(wallet: string): string {
+  function deriveBatchPda(wallet: string, fixtureId: string): string {
+    assertBatchFixtureId(fixtureId);
+    const [pda] = PublicKey.findProgramAddressSync(
+      [BATCH_SEED, new PublicKey(wallet).toBuffer(), Buffer.from(fixtureId, "utf8")],
+      programId,
+    );
+    return pda.toBase58();
+  }
+
+  /** Legacy per-wallet batch PDA (seeds [b"batch", wallet]) for v1 readback. */
+  function deriveLegacyBatchPda(wallet: string): string {
     const [pda] = PublicKey.findProgramAddressSync(
       [BATCH_SEED, new PublicKey(wallet).toBuffer()],
       programId,
@@ -384,16 +443,14 @@ export function createSolanaChainAdapter(
   }
 
   /**
-   * Parses one transaction as a batch commitment: fee payer must be this
-   * adapter's authority (spoof guard) and the memo must round-trip to the
-   * same batch PDA.
+   * Parses one transaction into a batch memo whose fee payer is this
+   * adapter's authority (spoof guard), returning the parsed memo plus block
+   * time, or null. The caller decides which memo version/pair it accepts.
    */
-  function parseBatchCommitment(
-    pda: string,
-    signature: string,
+  function parseBatchTransaction(
     tx: FetchedTransaction,
     fallbackBlockTime: number | null | undefined,
-  ): ChainBatch | null {
+  ): { memo: ParsedBatchMemo; submittedAt: Date } | null {
     if (tx.meta?.err) return null;
     const feePayer = tx.transaction.message.staticAccountKeys[0];
     if (!feePayer || !feePayer.equals(authority.publicKey)) return null;
@@ -402,43 +459,81 @@ export function createSolanaChainAdapter(
       const program =
         tx.transaction.message.staticAccountKeys[instruction.programIdIndex];
       if (!program || !program.equals(MEMO_PROGRAM_ID)) continue;
-      const memo = Buffer.from(instruction.data).toString("utf8");
-      if (!memo.startsWith(`${BATCH_MEMO_PREFIX}:`)) continue;
-      const [wallet, batchHash] = memo
-        .slice(BATCH_MEMO_PREFIX.length + 1)
-        .split(":");
-      if (!wallet || !batchHash) continue;
-      // A malformed wallet string in a third-party memo must not break
-      // readback of legitimate commitments — skip it, don't throw.
-      try {
-        if (deriveBatchPda(wallet) !== pda) continue;
-      } catch {
-        continue;
-      }
+      const memo = parseBatchMemo(Buffer.from(instruction.data).toString("utf8"));
+      if (!memo) continue;
       const blockTime = tx.blockTime ?? fallbackBlockTime;
-      return {
-        pda,
-        wallet,
-        batchHash,
-        signature,
-        submittedAt: blockTime ? new Date(blockTime * 1000) : clock(),
-      };
+      return { memo, submittedAt: blockTime ? new Date(blockTime * 1000) : clock() };
     }
     return null;
   }
 
-  async function getBatch(pda: string): Promise<ChainBatch | null> {
+  /**
+   * Scans a PDA's signatures oldest-first (init-once: the first valid
+   * commitment wins and can never be overridden) and returns the first that
+   * `accept` turns into a ChainBatch.
+   */
+  async function scanBatch(
+    pda: string,
+    accept: (parsed: {
+      memo: ParsedBatchMemo;
+      submittedAt: Date;
+      signature: string;
+    }) => ChainBatch | null,
+  ): Promise<ChainBatch | null> {
     const signatures = await collectSignatures(new PublicKey(pda));
-    // Oldest first: the first valid commitment is immutable, exactly like
-    // an init-once account — later transactions can never override it.
     for (const entry of signatures.reverse()) {
       if (entry.err) continue;
       const tx = await rpc().getTransaction(entry.signature);
       if (!tx) continue;
-      const batch = parseBatchCommitment(pda, entry.signature, tx, entry.blockTime);
+      const parsed = parseBatchTransaction(tx, entry.blockTime);
+      if (!parsed) continue;
+      const batch = accept({ ...parsed, signature: entry.signature });
       if (batch) return batch;
     }
     return null;
+  }
+
+  async function getBatch(
+    wallet: string,
+    fixtureId: string,
+  ): Promise<ChainBatch | null> {
+    const pda = deriveBatchPda(wallet, fixtureId);
+    return scanBatch(pda, ({ memo, submittedAt, signature }) => {
+      // v2 only, and only this exact (wallet, fixture) pair. The PDA seeds
+      // include the fixtureId, so a matching pair also round-trips to `pda`.
+      if (memo.version !== "v2") return null;
+      if (memo.wallet !== wallet || memo.fixtureId !== fixtureId) return null;
+      let derived: string;
+      try {
+        derived = deriveBatchPda(memo.wallet, memo.fixtureId);
+      } catch {
+        return null;
+      }
+      if (derived !== pda) return null;
+      return { pda, wallet, fixtureId, batchHash: memo.batchHash, signature, submittedAt };
+    });
+  }
+
+  async function getLegacyBatch(wallet: string): Promise<ChainBatch | null> {
+    const pda = deriveLegacyBatchPda(wallet);
+    return scanBatch(pda, ({ memo, submittedAt, signature }) => {
+      if (memo.version !== "v1" || memo.wallet !== wallet) return null;
+      // A malformed wallet string in a third-party memo must not break
+      // readback of legitimate commitments — skip it, don't throw.
+      try {
+        if (deriveLegacyBatchPda(memo.wallet) !== pda) return null;
+      } catch {
+        return null;
+      }
+      return {
+        pda,
+        wallet,
+        fixtureId: null,
+        batchHash: memo.batchHash,
+        signature,
+        submittedAt,
+      };
+    });
   }
 
   return {
@@ -490,9 +585,15 @@ export function createSolanaChainAdapter(
       return { pda };
     },
 
-    async submitBatch(input: { wallet: string; batchHash: string }) {
-      const pda = deriveBatchPda(input.wallet);
-      if (await getBatch(pda)) {
+    async submitBatch(input: {
+      wallet: string;
+      fixtureId: string;
+      batchHash: string;
+    }) {
+      // Rejects a ':' in fixtureId before any PDA is derived or tx sent.
+      const memo = buildBatchMemoV2(input.wallet, input.fixtureId, input.batchHash);
+      const pda = deriveBatchPda(input.wallet, input.fixtureId);
+      if (await getBatch(input.wallet, input.fixtureId)) {
         throw new ChainError("batch_exists", `batch account in use: ${pda}`);
       }
 
@@ -507,10 +608,7 @@ export function createSolanaChainAdapter(
         new TransactionInstruction({
           programId: MEMO_PROGRAM_ID,
           keys: [],
-          data: Buffer.from(
-            `${BATCH_MEMO_PREFIX}:${input.wallet}:${input.batchHash}`,
-            "utf8",
-          ),
+          data: Buffer.from(memo, "utf8"),
         }),
       ];
 
@@ -562,5 +660,6 @@ export function createSolanaChainAdapter(
     },
 
     getBatch,
+    getLegacyBatch,
   };
 }
