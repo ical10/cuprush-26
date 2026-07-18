@@ -21,7 +21,9 @@
     "typecheck": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx --env-file=.env src/db/migrate.ts",
-    "seed:demo": "tsx --env-file=.env src/db/seed-demo.ts"
+    "seed:demo": "tsx --env-file=.env src/db/seed-demo.ts",
+    "seed:agents": "tsx --env-file=.env src/db/seed-agents.ts",
+    "provision:agents": "tsx --env-file=.env src/agents/provision.ts"
   },
   "dependencies": {
 "@coral-xyz/anchor": "^0.32.1",
