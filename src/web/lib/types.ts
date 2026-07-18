@@ -100,11 +100,15 @@ export type Me = {
   walletAddress: string | null;
 };
 
+export type ParticipantKind = "human" | "agent";
+
 export type LeaderboardRow = {
   displayName: string | null;
   points: number;
   currentStreak: number;
   bestStreak: number;
+  kind: ParticipantKind;
+  cohortName: string | null;
 };
 
 export type FixtureUpdate = {
