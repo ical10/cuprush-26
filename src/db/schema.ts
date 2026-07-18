@@ -3,6 +3,7 @@ import {
   check,
   integer,
   jsonb,
+  numeric,
   pgEnum,
   pgTable,
   text,
@@ -20,7 +21,7 @@ export const participants = pgTable(
   "participants",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    kind: participantKind("kind").notNull(),
+    kind: participantKind("kind").notNull().default("human"),
     walletAddress: varchar("wallet_address", { length: 44 }).unique(),
     displayName: varchar("display_name", { length: 32 }),
     points: integer("points").notNull().default(0),
@@ -296,6 +297,112 @@ export const predictions = pgTable(
     unique("predictions_participant_question_unique").on(
       prediction.participantId,
       prediction.questionId,
+    ),
+  ],
+);
+
+// --- agent cohort -----------------------------------------------------------
+
+export const agentCohortStatus = pgEnum("agent_cohort_status", [
+  "active",
+  "paused",
+  "revoked",
+]);
+
+export type AgentCohortStatus = (typeof agentCohortStatus.enumValues)[number];
+
+// A Hermes relay's credential scope: one row per cohort of AI players. The
+// bearer token is stored only as a hash; the plaintext is printed once during
+// provisioning. `token_hash` stays null between seed and provisioning.
+export const agentCohorts = pgTable("agent_cohorts", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  // The human operator who owns this cohort. Owners are never hard-deleted, so
+  // this stays RESTRICT: a user with a cohort can't be removed out from under
+  // it.
+  ownerUserId: uuid("owner_user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "restrict" }),
+  name: varchar("name", { length: 64 }).notNull(),
+  // sha256 of the cohort bearer token, filled at provisioning time.
+  tokenHash: text("token_hash").unique(),
+  status: agentCohortStatus("status").notNull().default("active"),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  // Set when the token is rotated, invalidating the previous hash.
+  rotatedAt: timestamp("rotated_at", { withTimezone: true }),
+});
+
+// --- agents -----------------------------------------------------------------
+
+export const agentStatus = pgEnum("agent_status", [
+  "seeded",
+  "active",
+  "paused",
+  "revoked",
+]);
+
+export type AgentStatus = (typeof agentStatus.enumValues)[number];
+
+// The agent-specific extension of a participant (1:1). The participant carries
+// shared identity, scoring, and wallet; this row carries persona/strategy and
+// the cohort binding. `privy_wallet_id` stays null until provisioning maps a
+// Privy server wallet.
+export const agents = pgTable("agents", {
+  // Shared identity row. Participants are anonymized, never hard-deleted, so
+  // this stays RESTRICT — mirrors predictions/prediction_batches.
+  participantId: uuid("participant_id")
+    .primaryKey()
+    .references(() => participants.id, { onDelete: "restrict" }),
+  // Cohorts are revoked via status, never hard-deleted, so RESTRICT: a cohort
+  // with agents can't be removed.
+  cohortId: uuid("cohort_id")
+    .notNull()
+    .references(() => agentCohorts.id, { onDelete: "restrict" }),
+  agentKey: varchar("agent_key", { length: 32 }).notNull().unique(),
+  persona: text("persona").notNull(),
+  strategy: text("strategy").notNull(),
+  model: varchar("model", { length: 64 }).notNull(),
+  privyWalletId: varchar("privy_wallet_id", { length: 64 }).unique(),
+  status: agentStatus("status").notNull().default("seeded"),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+// --- agent decisions --------------------------------------------------------
+
+// One validated decision per agent participant per question. Raw model output
+// is never stored — only schema-validated fields land here. The composite
+// unique is the natural key (no surrogate id, per the design data model).
+export const agentDecisions = pgTable(
+  "agent_decisions",
+  {
+    // Account deletion anonymizes the participant but never deletes it, so
+    // this stays RESTRICT — mirrors predictions.participant_id.
+    participantId: uuid("participant_id")
+      .notNull()
+      .references(() => participants.id, { onDelete: "restrict" }),
+    // Mirrors predictions.question_id: default (no action) on delete.
+    questionId: uuid("question_id")
+      .notNull()
+      .references(() => questions.id),
+    outcome: varchar("outcome", { length: 16 }).notNull(),
+    confidence: numeric("confidence").notNull(),
+    rationale: varchar("rationale", { length: 280 }).notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (decision) => [
+    // One decision per participant per question.
+    unique("agent_decisions_participant_question_unique").on(
+      decision.participantId,
+      decision.questionId,
+    ),
+    check(
+      "agent_decisions_confidence_range",
+      sql`${decision.confidence} >= 0 AND ${decision.confidence} <= 1`,
     ),
   ],
 );
