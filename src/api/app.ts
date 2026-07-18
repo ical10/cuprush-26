@@ -9,6 +9,7 @@ import {
   type PredictionRoutesOptions,
 } from "./routes/predictions";
 import { createCohortRoutes } from "./routes/cohort";
+import { createCohortMcpRoute } from "./routes/cohort-mcp";
 import { createAuthAdapterFromEnv, type AuthAdapter } from "./auth/adapter";
 import type { DbProvider } from "./auth/middleware";
 import type { Database } from "../db/client";
@@ -59,6 +60,7 @@ export function createApp(options: CreateAppOptions = {}) {
   app.route("/api", createQuestionsRoute(getDb));
   app.route("/api", createPredictionRoutes(getDb, auth, options.predictions));
   app.route("/api", createCohortRoutes(getDb));
+  app.route("/api", createCohortMcpRoute(getDb));
 
   return app;
 }

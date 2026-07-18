@@ -27,7 +27,7 @@ const SUBMISSION_MARGIN_MS = 2 * 60_000;
 // of past calls (template + own pick + whether it landed).
 const HISTORY_LIMIT = 10;
 
-type CohortRow = typeof agentCohorts.$inferSelect;
+export type CohortRow = typeof agentCohorts.$inferSelect;
 type BatchRow = typeof predictionBatches.$inferSelect;
 
 type CohortEnvBindings = { Variables: { cohort: CohortRow } };
@@ -36,41 +36,57 @@ function sha256Hex(value: string): string {
   return createHash("sha256").update(value).digest("hex");
 }
 
-function bearerToken(header: string | undefined): string | null {
+/** Parses a `Bearer <token>` Authorization header, or null if malformed. */
+export function cohortBearerToken(header: string | undefined): string | null {
   if (!header) return null;
   const [scheme, token, ...rest] = header.split(" ");
   if (scheme !== "Bearer" || !token || rest.length > 0) return null;
   return token;
 }
 
+export type CohortAuthResult =
+  | { ok: true; cohort: CohortRow }
+  | { ok: false; status: 401 | 403; error: string };
+
 /**
- * Authenticates the Hermes relay by its cohort bearer token. The plaintext is
- * hashed and matched against `agent_cohorts.token_hash` — the token and its
+ * Authenticates the Hermes relay by its cohort bearer token — the single auth
+ * decision shared by the REST middleware and the MCP transport. The plaintext
+ * is hashed and matched against `agent_cohorts.token_hash`; the token and its
  * hash are never logged. A missing or unknown token is 401; a known cohort
  * that is paused or revoked is 403.
  */
+export async function authenticateCohort(
+  db: Database,
+  token: string | null,
+): Promise<CohortAuthResult> {
+  if (!token) return { ok: false, status: 401, error: "unauthorized" };
+
+  const [cohort] = await db
+    .select()
+    .from(agentCohorts)
+    .where(eq(agentCohorts.tokenHash, sha256Hex(token)));
+
+  if (!cohort) return { ok: false, status: 401, error: "unauthorized" };
+  if (cohort.status !== "active") {
+    return { ok: false, status: 403, error: "cohort is not active" };
+  }
+  return { ok: true, cohort };
+}
+
 function createCohortAuth(getDb: DbProvider): MiddlewareHandler<CohortEnvBindings> {
   return async (c, next) => {
-    const token = bearerToken(c.req.header("Authorization"));
-    if (!token) return c.json({ error: "unauthorized" }, 401);
-
     const db = await getDb();
-    const [cohort] = await db
-      .select()
-      .from(agentCohorts)
-      .where(eq(agentCohorts.tokenHash, sha256Hex(token)));
-
-    if (!cohort) return c.json({ error: "unauthorized" }, 401);
-    if (cohort.status !== "active") {
-      return c.json({ error: "cohort is not active" }, 403);
-    }
-
-    c.set("cohort", cohort);
+    const result = await authenticateCohort(
+      db,
+      cohortBearerToken(c.req.header("Authorization")),
+    );
+    if (!result.ok) return c.json({ error: result.error }, result.status);
+    c.set("cohort", result.cohort);
     await next();
   };
 }
 
-const decisionItemSchema = z.strictObject({
+export const decisionItemSchema = z.strictObject({
   agent_key: z.string().min(1).max(32),
   question_id: z.uuid(),
   outcome: z.string().min(1).max(16),
@@ -95,6 +111,19 @@ type ItemResult =
   | { agent_key: unknown; question_id: unknown; ok: true; predictionId: string }
   | { agent_key: unknown; question_id: unknown; ok: false; error: string };
 
+export type PendingPlayer = {
+  agent_key: string;
+  persona: string;
+  strategy: string;
+  history: { template: string; outcome: string; correct: boolean | null }[];
+  open_questions: {
+    id: string;
+    question: string;
+    outcomes: readonly string[];
+    locks_at: Date;
+  }[];
+};
+
 /**
  * The MCP boundary for the AI player cohort. Two bearer-authenticated
  * endpoints let an external Hermes relay read pending work and submit
@@ -111,16 +140,40 @@ export function createCohortRoutes(getDb: DbProvider) {
   // get_pending_work: the cohort's active players, their short recent form,
   // and the open questions each still has to answer.
   app.post("/cohort/pending", requireCohort, async (c) => {
-    const cohort = c.get("cohort");
-    const db = await getDb();
+    return c.json(await getPendingWork(await getDb(), c.get("cohort")));
+  });
 
+  // submit_decisions: per-item independent validation and storage. One bad
+  // item never sinks the others; a duplicate returns the existing prediction.
+  app.post("/cohort/decisions", requireCohort, async (c) => {
+    const body = await c.req.json().catch(() => null);
+    if (!Array.isArray(body)) {
+      return c.json({ error: "body must be an array of decisions" }, 400);
+    }
+    return c.json(await submitDecisions(await getDb(), c.get("cohort"), body));
+  });
+
+  return app;
+}
+
+/**
+ * The read side of the cohort boundary, callable without an HTTP context so
+ * both the REST endpoint and the MCP `get_pending_work` tool share it. Returns
+ * the cohort's active players, their short recent form, and the open questions
+ * each still has to answer.
+ */
+export async function getPendingWork(
+  db: Database,
+  cohort: CohortRow,
+): Promise<{ players: PendingPlayer[] }> {
+  {
     const players = await db
       .select({ agent: agents, participant: participants })
       .from(agents)
       .innerJoin(participants, eq(agents.participantId, participants.id))
       .where(and(eq(agents.cohortId, cohort.id), eq(agents.status, "active")));
 
-    if (players.length === 0) return c.json({ players: [] });
+    if (players.length === 0) return { players: [] };
 
     const participantIds = players.map((p) => p.participant.id);
 
@@ -198,7 +251,7 @@ export function createCohortRoutes(getDb: DbProvider) {
       };
     });
 
-    return c.json({
+    return {
       players: players.map((p) => {
         const answeredSet = answeredByParticipant.get(p.participant.id);
         return {
@@ -209,20 +262,24 @@ export function createCohortRoutes(getDb: DbProvider) {
           open_questions: openQuestions.filter((q) => !answeredSet?.has(q.id)),
         };
       }),
-    });
-  });
+    };
+  }
+}
 
-  // submit_decisions: per-item independent validation and storage. One bad
-  // item never sinks the others; a duplicate returns the existing prediction.
-  app.post("/cohort/decisions", requireCohort, async (c) => {
-    const cohort = c.get("cohort");
-    const body = await c.req.json().catch(() => null);
-    if (!Array.isArray(body)) {
-      return c.json({ error: "body must be an array of decisions" }, 400);
-    }
-
-    const db = await getDb();
-
+/**
+ * The write side of the cohort boundary, callable without an HTTP context so
+ * both the REST endpoint and the MCP `submit_decisions` tool share it. Each
+ * item is validated and stored independently: one bad item never sinks the
+ * others, a duplicate returns the existing prediction, and `agent_key` is
+ * bound to a participant server-side (a forged or cross-cohort key is
+ * rejected). `body` is any array; every element is validated per-item.
+ */
+export async function submitDecisions(
+  db: Database,
+  cohort: CohortRow,
+  body: unknown[],
+): Promise<{ results: ItemResult[] }> {
+  {
     // Active agents of THIS cohort only — the map is the identity gate. A key
     // that isn't here (forged, cross-cohort, paused, or revoked) is rejected.
     const cohortAgents = await db
@@ -337,10 +394,8 @@ export function createCohortRoutes(getDb: DbProvider) {
       await refreshBatchHashes(db, participantId);
     }
 
-    return c.json({ results });
-  });
-
-  return app;
+    return { results };
+  }
 }
 
 /**
