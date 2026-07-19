@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 
-export const TEST_DB_NAME = "worldcup_hilo_test";
+export const TEST_DB_NAME = "cuprush_test";
 
 function baseDatabaseUrl(): URL {
   const raw = process.env.DATABASE_URL;

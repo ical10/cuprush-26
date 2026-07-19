@@ -90,29 +90,20 @@ flowchart LR
   SCHED --> MEMO
 ```
 
-One TypeScript package, ESM. Hono serves REST + SSE; `full` runtime mode also
-runs ingestion and three background loops locally. On Railway the web app
-stays in `web` mode while a bounded, advisory-locked cron runner owns
-ingestion, lifecycle, reconciliation, and settlement around matches. Chain
-access goes through one adapter (in-memory stub by default, `CHAIN_MODE=solana`
-for devnet).
-
-Data flow: TxLINE events → `src/txline` (sequence-guarded apply into
-`fixtures` + validated Postgres notifications) → scheduler + SSE `/api/live` →
-settlement. Durable catch-up recovers missed transitions from fixture state.
-
-**On-chain model** (program `9u7uuj7S8kMon564b4TA8Gc7RaYXSC5QgjDz8fFgmGCU`):
-one immutable `Question` PDA per canonical rule hash (creation allowlisted to
-the server authority, injected at build time), settlement gated to
-`status == Open` and `now >= locks_at`, exactly once. Player picks hash into
-one SPL-Memo commitment per (wallet, fixture), frozen at kickoff−30min so
-every accepted pick is inside a verifiable hash.
-
-**AI cohort**: ten seeded personas with Privy server wallets. An external
-Hermes instance decides; the backend owns attribution (agent_key → participant
-→ wallet), validates every decision (outcomes, confidence, 2-minute lock
-margin), and rejects forged identities. Agents ride the same submission,
-settlement, and scoring paths as humans — MCP endpoint at `/api/cohort/mcp`.
+- **One TypeScript package** (ESM, Node 22). Hono serves REST + SSE; a
+  bounded cron runner owns ingestion, lifecycle, and settlement around
+  matches. Chain access sits behind one adapter (stub or Solana devnet).
+- **Data flow**: TxLINE events → sequence-guarded apply into `fixtures` →
+  question scheduler + live SSE → settlement. Durable catch-up recovers any
+  missed transition from fixture state.
+- **On-chain** (program `9u7u…GMCU`): one immutable `Question` PDA per rule
+  hash — creation allowlisted to the server authority, settlement only from
+  `Open` at/after lock, exactly once. Picks hash into one SPL-Memo commitment
+  per (wallet, fixture), frozen at kickoff−30min, recomputable by anyone.
+- **AI cohort**: ten personas with Privy server wallets. Hermes decides;
+  the backend decides identity (`agent_key` → participant → wallet),
+  validates every item, and rejects forged keys. Same submission and scoring
+  pipeline as humans — MCP endpoint at `/api/cohort/mcp`.
 
 ## Tech Stack
 
@@ -165,21 +156,32 @@ See `.env.example` for inline docs on every variable. The short version:
 credentials, TxLINE live credentials + `TXLINE_COMPETITION_ID=72`,
 `CHAIN_MODE=solana` with the authority key, and the replay/runner knobs.
 
-## Roadmap
+## How to Enjoy CupRush 26
 
-- Player-signed prediction commitments with on-chain lock-window enforcement
-  (the deployed `submit_prediction` instruction — currently server-attested
-  memo commitments)
-- Oracle-verified settlement instead of trusted-authority results
-- Role separation: settlement authority ≠ fee payer ≠ upgrade authority
-- Publish the Anchor IDL on-chain so explorers decode instructions
-- Server-side `startEpochDay` windowing in the live ingest client
+1. **Open the app** — link or QR, straight in your mobile browser. No
+   install, no wallet, no crypto knowledge needed.
+2. **Browse the deck as a guest** — real match cards: "Will Argentina score
+   more goals than England?", "Higher or lower than the last-10 average?"
+3. **Make your first call** — swipe or tap. That's when you sign in: type
+   your email, enter the 6-digit code. Done — a Solana wallet is created for
+   you behind the scenes, fees covered.
+4. **Finish the deck and submit** — your picks are saved instantly and
+   frozen on Solana before kickoff. No edits, no take-backs, provable.
+5. **Watch it live** — cards react to goals, cards, and corners as the match
+   plays.
+6. **Get scored** — the moment the match settles, points and streaks land.
+   Every question's result is recorded on-chain, exactly once.
+7. **Climb the leaderboard** — filter Overall, Humans, or AI. Ten AI rivals
+   with their own strategies (Form Hawk, Chaos Goblin, The Quant…) are
+   grinding the same questions. Out-call them.
+8. **Never wait for a match** — finished World Cup fixtures replay with
+   fresh decks, so there is always a call to make.
 
 ## Limitations
 
 - Devnet only, points only: no wagers, no prizes, no real value.
 - Settlement trusts the server authority; the program enforces who/when, not
-  result correctness against an oracle (see Roadmap).
+  result correctness against an oracle.
 - The TxLINE devnet feed simulates its own 2026 tournament; fixtures are the
   feed's universe, not real-world results.
 - Single app replica (in-memory SSE bus); horizontal scaling needs a shared bus.
@@ -187,35 +189,23 @@ credentials, TxLINE live credentials + `TXLINE_COMPETITION_ID=72`,
 
 ## Testing
 
-Vitest, three projects: **unit** (`*.test.ts`), **web** (jsdom component
-tests), **integration** (`*.int.test.ts`, drops/recreates a dedicated
-`worldcup_hilo_test` database; files run serially against it). An end-to-end
-smoke recipe (replayed match through prediction, settlement, and scoring on a
-production-ish server) lives in `docs/` history — the integration suite now
-covers the same path automatically, including the cohort full-tick and
-per-fixture commitment proofs.
+**666 tests across three Vitest projects** — all green in CI on every PR:
 
-## Deploy (Railway)
+- **Unit — 397 tests** (`*.test.ts`): question templates, generation and
+  benchmarks (163 across questions), chain adapter + memo formats (68),
+  TxLINE parsing and filters (103), API validation, batch hashing,
+  reconciler, agents, runner.
+- **Integration — 213 tests** (`*.int.test.ts`, real Postgres): schema
+  constraints, prediction batches, cohort API (auth, attribution,
+  idempotency), settlement scoring, and full end-to-end proofs — a complete
+  AI-cohort tick (seed → decide → submit → settle → leaderboard) and the
+  per-fixture on-chain commitment lifecycle. The suite drops and recreates a
+  dedicated `cuprush_test` database each run; files run serially against it.
+- **Web — 56 tests** (jsdom): card deck flows, auth screens, leaderboard
+  filters and AI badges, tx-status copy.
 
-Three services: serverless **app** (`web` runtime), cron **match-runner**
-(every 5 min, advisory-locked, bounded), **Postgres**. `railway.json` /
-`railway.runner.json` carry config-as-code: Railpack build, migrations as
-pre-deploy, `/api/health` healthcheck. Keep one app replica.
-
-Per-service env matrix lives in `.env.example`; the essentials:
-
-| Variable | app (production) | match-runner (production) |
-|---|---|---|
-| `APP_RUNTIME_MODE` | `web` | unused (own entrypoint) |
-| `AUTH_MODE` + Privy creds | `privy` (fail-closed) | unused |
-| `TXLINE_MODE` + creds | unused | `live` |
-| `TXLINE_COMPETITION_ID` | `72` | `72` |
-| `CHAIN_MODE` / `MATCH_RUNNER_CHAIN_WRITES` | unused | `solana` / `enabled` |
-| `SOLANA_PRIVATE_KEY` / `CUPRUSH_PROGRAM_ID` | unused | authority key / program id |
-
-Auth fails closed: an unset `AUTH_MODE` selects the Privy adapter, which
-refuses to boot without credentials — a misconfigured deploy crashes instead
-of accepting stub tokens.
+Run them: `pnpm test`, `pnpm test:integration`, `pnpm exec vitest run
+--project web`.
 
 ## Contributing
 
