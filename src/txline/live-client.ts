@@ -262,13 +262,17 @@ export function createLiveTxLineClient(options: LiveClientOptions): TxLineClient
   }
 
   async function discoverFixtures(signal: AbortSignal): Promise<TxLineFixtureSnapshot[]> {
-    // The devnet `GET /api/fixtures/snapshot` endpoint appears to support a
-    // server-side competition filter (a `fixtures-snapshot-competition-72`
-    // capture exists), but the exact query-param name is not documented in any
-    // capture script, README, or commit, so we cannot request it filtered.
-    // The client-side gate below is the single source of truth for now; add a
-    // server-side param here (keeping this guard) once the name is known.
-    const raw = await fetchJson("/api/fixtures/snapshot", signal);
+    // Verified against the live devnet API by direct probing: `GET
+    // /api/fixtures/snapshot?competitionId=<int>` filters server-side (exact
+    // casing — `competition`, `CompetitionId`, `competition_id` are silently
+    // ignored). We pass it whenever TXLINE_COMPETITION_ID is set, but keep the
+    // client-side gate below as defense in depth in case the server-side
+    // filter ever changes behavior or is bypassed.
+    const path =
+      competitionFilter === null
+        ? "/api/fixtures/snapshot"
+        : `/api/fixtures/snapshot?competitionId=${competitionFilter}`;
+    const raw = await fetchJson(path, signal);
     const snapshots = txLineFixtureListSchema.parse(raw);
 
     const allowed: TxLineFixtureSnapshot[] = [];

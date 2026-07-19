@@ -304,6 +304,30 @@ describe("createLiveTxLineClient startup", () => {
     await client.stop();
   });
 
+  it("prepare requests the fixtures snapshot with a server-side competitionId param when TXLINE_COMPETITION_ID is set", async () => {
+    const urls: string[] = [];
+    const fetchImpl = vi.fn(async (input: URL | RequestInfo) => {
+      const url = String(input);
+      urls.push(url);
+      return url.endsWith("/auth/guest/start")
+        ? new Response(JSON.stringify({ token: "jwt" }), { status: 200 })
+        : new Response(JSON.stringify([fixtureSnapshot]), { status: 200 });
+    }) as typeof fetch;
+    const client = createLiveTxLineClient({
+      db: fixtureOnlyDb(),
+      env: { ...env, TXLINE_COMPETITION_ID: "72" } as NodeJS.ProcessEnv,
+      fetchImpl,
+    });
+
+    await client.prepare();
+
+    expect(urls).toEqual([
+      "https://txline.example.com/auth/guest/start",
+      "https://txline.example.com/api/fixtures/snapshot?competitionId=72",
+    ]);
+    await client.stop();
+  });
+
   it("prepare inserts only fixtures whose CompetitionId matches TXLINE_COMPETITION_ID", async () => {
     const inserted: { id: string; competition: string | null; competitionId: number | null }[] =
       [];
