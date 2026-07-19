@@ -42,6 +42,7 @@ export function createTxLineClient(options: CreateTxLineClientOptions): TxLineCl
 
   return createReplayTxLineClient({
     db: options.db,
+    env: options.env ?? process.env,
     fixturesDir: options.fixturesDir,
     intervalMs: options.intervalMs,
     publishUpdate: options.publishUpdate,

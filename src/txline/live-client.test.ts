@@ -304,6 +304,51 @@ describe("createLiveTxLineClient startup", () => {
     await client.stop();
   });
 
+  it("prepare inserts only fixtures whose both teams are in TXLINE_TEAM_ALLOWLIST", async () => {
+    const inserted: string[] = [];
+    const recordingDb = {
+      insert: () => ({
+        values: (row: { id: string }) => {
+          inserted.push(row.id);
+          return { onConflictDoUpdate: async () => {} };
+        },
+      }),
+    } as unknown as Database;
+
+    const allowed = {
+      FixtureId: 100,
+      StartTime: Date.parse("2030-06-20T12:00:00.000Z"),
+      Participant1: "Spain",
+      Participant2: "Argentina",
+      Participant1IsHome: true,
+    };
+    const disallowed = {
+      FixtureId: 200,
+      StartTime: Date.parse("2030-06-20T15:00:00.000Z"),
+      Participant1: "Myanmar",
+      Participant2: "Vietnam",
+      Participant1IsHome: true,
+    };
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const fetchImpl = vi.fn(async (input: URL | RequestInfo) => {
+      const url = String(input);
+      return url.endsWith("/auth/guest/start")
+        ? new Response(JSON.stringify({ token: "jwt" }), { status: 200 })
+        : new Response(JSON.stringify([allowed, disallowed]), { status: 200 });
+    }) as typeof fetch;
+    const client = createLiveTxLineClient({
+      db: recordingDb,
+      env: { ...env, TXLINE_TEAM_ALLOWLIST: "Spain,Argentina" } as NodeJS.ProcessEnv,
+      fetchImpl,
+    });
+
+    await client.prepare();
+
+    expect(inserted).toEqual(["100"]);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("200"));
+    await client.stop();
+  });
+
   it("does not resolve start until the initial fixture snapshot is applied", async () => {
     let releaseSnapshot: (() => void) | undefined;
     const snapshotReady = new Promise<void>((resolve) => {
