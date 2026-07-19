@@ -5,6 +5,7 @@ import type {
   LinkedAccountWithMetadata,
   WalletWithMetadata,
 } from "@privy-io/react-auth";
+import { toSolanaWalletConnectors } from "@privy-io/react-auth/solana";
 import { AuthContext } from "./auth-context";
 import type { AuthContextValue } from "./auth-context";
 import { saveWalletAddress, setAuthTokenProvider } from "../lib/api";
@@ -99,6 +100,13 @@ export function PrivyAuthProvider({ children }: { children: ReactNode }) {
         loginMethods: ["email"],
         embeddedWallets: {
           solana: { createOnLogin: "users-without-wallets" },
+        },
+        // Required for Privy's Solana chain support to initialize at all —
+        // without it, embedded Solana wallet creation silently no-ops even
+        // though loginMethods excludes "wallet" (no external wallet login
+        // is actually exposed; this only unblocks the embedded-wallet path).
+        externalWallets: {
+          solana: { connectors: toSolanaWalletConnectors() },
         },
       }}
     >
