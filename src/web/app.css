@@ -190,7 +190,15 @@ button {
   padding: 0 1rem 1rem;
 }
 
+/* Pinned to the viewport bottom: .app-shell has no overflow/scroll of its
+   own (the document scrolls), so sticky resolves against the viewport and
+   stays put through every screen's content, including tall ones (profile,
+   long decks). z-index sits above the deck's stadium backdrop (-1) and the
+   leaderboard's sticky header (1) — nav is the outermost chrome layer. */
 .nav-bar {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
   display: flex;
   border-top: 1px solid var(--border);
   background: var(--surface);
