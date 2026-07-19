@@ -21,6 +21,8 @@ const app = createApp();
 // production-ish smoke run with the dev auth stub). The /api routes were
 // registered first, so they always win.
 if (existsSync("./dist/client")) {
+  app.get("/app", serveStatic({ path: "./dist/client/app.html" }));
+  app.get("/app/*", serveStatic({ path: "./dist/client/app.html" }));
   app.use("/*", serveStatic({ root: "./dist/client" }));
   app.get("*", serveStatic({ path: "./dist/client/index.html" }));
 }

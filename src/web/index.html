@@ -2,28 +2,91 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#07120D" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <title>CupRush 26 — make the call</title>
-    <meta
-      name="description"
-      content="The match is live. Make your call. Be the winner. CupRush 26 is the instant prediction game for the 2026 tournament."
-    />
-    <meta property="og:title" content="CupRush 26 — Make your call" />
+    <title>CupRush 26 — Make the call</title>
+    <meta name="description" content="Predict match outcomes, lock your calls on Solana, and climb the leaderboard against fans and AI rivals." />
+    <meta property="og:title" content="CupRush 26 — Make the call" />
     <meta property="og:description" content="The match is live. Make your call. Be the winner." />
-    <meta property="og:image" content="https://app-production-8a6b.up.railway.app/og.jpg" />
-    <meta property="og:image:width" content="1200" />
-    <meta property="og:image:height" content="630" />
-    <meta property="og:type" content="website" />
-    <meta property="og:url" content="https://app-production-8a6b.up.railway.app" />
-    <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="CupRush 26 — Make your call" />
-    <meta name="twitter:description" content="The match is live. Make your call. Be the winner." />
-    <meta name="twitter:image" content="https://app-production-8a6b.up.railway.app/og.jpg" />
+    <meta property="og:image" content="/og.jpg" />
+    <link rel="icon" href="/favicon.svg" />
+    <link rel="stylesheet" href="./landing.css" />
   </head>
   <body>
-    <div id="root"></div>
-    <script type="module" src="/main.tsx"></script>
+    <main class="hero">
+      <header class="topbar">
+        <span class="lockup" aria-label="CupRush 26">
+          <span class="lockup-name">CUPRUSH</span>
+          <span class="lockup-slash" aria-hidden="true">//</span>
+          <span class="lockup-year">26</span>
+        </span>
+        <a class="topbar-cta" href="/app">Open app</a>
+      </header>
+
+      <section class="pitch">
+        <p class="kicker reveal" style="--i: 0">
+          <span class="live-dot" aria-hidden="true"></span>
+          The match is live
+        </p>
+        <h1 class="headline reveal" style="--i: 1">
+          Make the call.<br />
+          <span class="headline-accent">Own the moment.</span>
+        </h1>
+        <p class="sub reveal" style="--i: 2">
+          Swipe through match predictions, lock them on Solana, and climb the
+          leaderboard against fans and AI rivals.
+        </p>
+        <div class="cta-row reveal" style="--i: 3">
+          <a class="cta" href="/app" id="cta">
+            Make your call
+            <svg class="cta-arrow" viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+              <path d="M5 12h14M13 6l6 6-6 6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </a>
+          <p class="cta-note">Free · No wallet setup · Sign in with email</p>
+        </div>
+      </section>
+
+      <section class="card-stage reveal" style="--i: 4" aria-hidden="true">
+        <div class="demo-tilt" id="demo-tilt">
+          <div class="demo-card" id="demo-card">
+            <span class="demo-stamp" id="demo-stamp" aria-hidden="true"></span>
+            <p class="demo-team" id="demo-team">MEXICO <span class="demo-vs">VS</span> ENGLAND</p>
+            <div class="demo-rule"></div>
+            <p class="demo-q" id="demo-q">Will Mexico score more goals than England?</p>
+            <div class="demo-actions">
+              <span class="demo-no" id="demo-no">← NO</span>
+              <span class="demo-yes" id="demo-yes">YES →</span>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <section class="strip">
+      <div class="strip-item">
+        <p class="strip-title">Swipe your picks</p>
+        <p class="strip-body">Ten quick calls per match: winner, goals, cards, corners.</p>
+      </div>
+      <div class="strip-item">
+        <p class="strip-title">Locked on Solana</p>
+        <p class="strip-body">Your calls freeze on-chain at kickoff. No take-backs, no edits. Provable.</p>
+      </div>
+      <div class="strip-item">
+        <p class="strip-title">Beat the AI rivals</p>
+        <p class="strip-body">Ten AI players are grinding the same questions. Out-call them.</p>
+      </div>
+    </section>
+
+    <footer class="footer">
+      <span class="lockup lockup-small" aria-hidden="true">
+        <span class="lockup-name">CUPRUSH</span>
+        <span class="lockup-slash">//</span>
+        <span class="lockup-year">26</span>
+      </span>
+      <p class="footer-note">Independent proof of concept on Solana devnet. Not affiliated with FIFA. Points only: no wagers, no prizes.</p>
+    </footer>
+
+    <script type="module" src="./landing.ts"></script>
   </body>
 </html>

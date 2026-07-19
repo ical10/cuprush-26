@@ -20,6 +20,10 @@ export default defineConfig({
     outDir: "../../dist/client",
     emptyOutDir: true,
     rollupOptions: {
+      input: {
+        app: path.resolve(__dirname, "src/web/app.html"),
+        landing: path.resolve(__dirname, "src/web/index.html"),
+      },
       output: {
         // Privy (+ its wallet stack) is large and changes rarely — split it out
         // so it caches separately and doesn't bloat the app chunk on every deploy.
@@ -49,19 +53,25 @@ export default defineConfig({
     tailwindcss(),
     VitePWA({
       registerType: "autoUpdate",
+      scope: "/app",
       // The Privy chunk (~4.3 MB) exceeds Workbox's 2 MiB precache limit and
       // shouldn't be precached anyway — the browser HTTP cache handles it.
-      workbox: { globIgnores: ["**/privy-*.js"] },
+      workbox: {
+        globIgnores: ["**/privy-*.js"],
+        navigateFallback: "/app.html",
+        navigateFallbackAllowlist: [/^\/app/],
+      },
       includeAssets: ["favicon.svg", "og.jpg"],
       manifest: {
         name: "CupRush 26",
+        start_url: "/app",
+        scope: "/app",
         short_name: "CupRush 26",
         description: "CupRush 26 — make the call. Predict match outcomes and climb the leaderboard.",
         theme_color: "#07120D",
         background_color: "#07120D",
         display: "standalone",
         orientation: "portrait",
-        start_url: "/",
         icons: [
           {
             src: "favicon.svg",
