@@ -20,6 +20,7 @@ function dependencies(overrides: Partial<MatchRunnerOptions> = {}) {
       questionsInserted: 0,
       openedCount: 0,
       lockedCount: 0,
+      replaysFinishedCount: 0,
       fixtureCatchUpCount: 0,
       overdueSettlingCount: 0,
     })),

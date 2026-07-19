@@ -57,6 +57,7 @@ describe("match runner advisory lock", () => {
           questionsInserted: 0,
           openedCount: 0,
           lockedCount: 0,
+          replaysFinishedCount: 0,
           fixtureCatchUpCount: 0,
           overdueSettlingCount: 0,
         };

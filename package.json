@@ -23,6 +23,7 @@
     "db:migrate": "tsx --env-file=.env src/db/migrate.ts",
     "seed:demo": "tsx --env-file=.env src/db/seed-demo.ts",
     "seed:agents": "tsx --env-file-if-exists=.env src/db/seed-agents.ts",
+    "seed:replays": "tsx --env-file-if-exists=.env src/db/seed-replays.ts",
     "cleanup:fixtures": "tsx --env-file-if-exists=.env src/db/cleanup-fixtures.ts",
     "provision:agents": "tsx --env-file-if-exists=.env src/agents/provision.ts"
   },
