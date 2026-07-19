@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import type { Database } from "../db/client";
 import { fixtures } from "../db/schema";
 import { applyTxLineEvent, toFixtureUpdate } from "./apply";
-import { isFixtureAllowed, parseTeamAllowlist } from "./allowlist";
+import { isFixtureInCompetition, parseCompetitionId } from "./competition";
 import { publishFixtureUpdate, type FixtureUpdatePublisher } from "./bus";
 import { txLineReplayFileSchema, type TxLineReplayFile } from "./schema";
 import type { TxLineClient } from "./client";
@@ -16,7 +16,7 @@ export type ReplayClientOptions = {
   db: Database;
   /** Directory of captured JSON event files. Defaults to fixtures/samples. */
   fixturesDir?: string;
-  /** Env source for TXLINE_TEAM_ALLOWLIST. Defaults to allow-all when omitted. */
+  /** Env source for TXLINE_COMPETITION_ID. Defaults to allow-all when omitted. */
   env?: NodeJS.ProcessEnv;
   /**
    * Delay between events in ms. 0 (default) applies every event immediately
@@ -50,6 +50,8 @@ async function seedSnapshot(db: Database, snapshot: TxLineReplayFile["snapshot"]
       gameState: snapshot.gameState,
       lastSeq: snapshot.seq,
       stats: snapshot.stats,
+      competition: snapshot.competition,
+      competitionId: snapshot.competitionId,
     })
     .onConflictDoNothing({ target: fixtures.id });
 }
@@ -58,7 +60,7 @@ async function seedSnapshot(db: Database, snapshot: TxLineReplayFile["snapshot"]
 export function createReplayTxLineClient(options: ReplayClientOptions): TxLineClient {
   const fixturesDir = options.fixturesDir ?? DEFAULT_FIXTURES_DIR;
   const intervalMs = options.intervalMs ?? 0;
-  const allowlist = parseTeamAllowlist(options.env?.TXLINE_TEAM_ALLOWLIST);
+  const competitionFilter = parseCompetitionId(options.env?.TXLINE_COMPETITION_ID);
   const publishUpdate = options.publishUpdate ?? publishFixtureUpdate;
   const timers: NodeJS.Timeout[] = [];
   let stopped = false;
@@ -81,14 +83,13 @@ export function createReplayTxLineClient(options: ReplayClientOptions): TxLineCl
       signal?.throwIfAborted();
       const loaded = await loadReplayFixtures(fixturesDir);
       files = loaded.filter((file) => {
-        const allowed = isFixtureAllowed(
-          allowlist,
-          file.snapshot.homeTeam,
-          file.snapshot.awayTeam,
+        const allowed = isFixtureInCompetition(
+          competitionFilter,
+          file.snapshot.competitionId,
         );
         if (!allowed) {
           console.warn(
-            `TxLINE fixture ${file.snapshot.fixtureId} skipped: ${file.snapshot.homeTeam} vs ${file.snapshot.awayTeam} not in TXLINE_TEAM_ALLOWLIST`,
+            `TxLINE fixture ${file.snapshot.fixtureId} skipped: competition ${file.snapshot.competitionId ?? "unknown"} (${file.snapshot.competition ?? "unknown"}) does not match TXLINE_COMPETITION_ID`,
           );
         }
         return allowed;

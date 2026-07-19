@@ -12,6 +12,8 @@ const fixture: FixtureRow = {
   startsAt: new Date(),
   gameState: "scheduled",
   stage: "group",
+  competitionId: null,
+  competition: null,
   lastSeq: 0,
   stats: {},
   createdAt: new Date(),

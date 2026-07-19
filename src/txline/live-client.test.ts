@@ -304,48 +304,103 @@ describe("createLiveTxLineClient startup", () => {
     await client.stop();
   });
 
-  it("prepare inserts only fixtures whose both teams are in TXLINE_TEAM_ALLOWLIST", async () => {
-    const inserted: string[] = [];
+  it("prepare inserts only fixtures whose CompetitionId matches TXLINE_COMPETITION_ID", async () => {
+    const inserted: { id: string; competition: string | null; competitionId: number | null }[] =
+      [];
     const recordingDb = {
       insert: () => ({
-        values: (row: { id: string }) => {
-          inserted.push(row.id);
+        values: (row: { id: string; competition: string | null; competitionId: number | null }) => {
+          inserted.push({
+            id: row.id,
+            competition: row.competition,
+            competitionId: row.competitionId,
+          });
           return { onConflictDoUpdate: async () => {} };
         },
       }),
     } as unknown as Database;
 
-    const allowed = {
+    const worldCup = {
       FixtureId: 100,
       StartTime: Date.parse("2030-06-20T12:00:00.000Z"),
       Participant1: "Spain",
       Participant2: "Argentina",
       Participant1IsHome: true,
+      Competition: "World Cup",
+      CompetitionId: 72,
     };
-    const disallowed = {
+    const friendly = {
       FixtureId: 200,
       StartTime: Date.parse("2030-06-20T15:00:00.000Z"),
       Participant1: "Myanmar",
       Participant2: "Vietnam",
       Participant1IsHome: true,
+      Competition: "Friendlies",
+      CompetitionId: 430,
     };
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const fetchImpl = vi.fn(async (input: URL | RequestInfo) => {
       const url = String(input);
       return url.endsWith("/auth/guest/start")
         ? new Response(JSON.stringify({ token: "jwt" }), { status: 200 })
-        : new Response(JSON.stringify([allowed, disallowed]), { status: 200 });
+        : new Response(JSON.stringify([worldCup, friendly]), { status: 200 });
     }) as typeof fetch;
     const client = createLiveTxLineClient({
       db: recordingDb,
-      env: { ...env, TXLINE_TEAM_ALLOWLIST: "Spain,Argentina" } as NodeJS.ProcessEnv,
+      env: { ...env, TXLINE_COMPETITION_ID: "72" } as NodeJS.ProcessEnv,
       fetchImpl,
     });
 
     await client.prepare();
 
-    expect(inserted).toEqual(["100"]);
+    expect(inserted).toEqual([{ id: "100", competition: "World Cup", competitionId: 72 }]);
     expect(warn).toHaveBeenCalledWith(expect.stringContaining("200"));
+    await client.stop();
+  });
+
+  it("prepare inserts all fixtures with their competition fields when no filter is set", async () => {
+    const inserted: { id: string; competitionId: number | null }[] = [];
+    const recordingDb = {
+      insert: () => ({
+        values: (row: { id: string; competitionId: number | null }) => {
+          inserted.push({ id: row.id, competitionId: row.competitionId });
+          return { onConflictDoUpdate: async () => {} };
+        },
+      }),
+    } as unknown as Database;
+
+    const worldCup = {
+      FixtureId: 100,
+      StartTime: Date.parse("2030-06-20T12:00:00.000Z"),
+      Participant1: "Spain",
+      Participant2: "Argentina",
+      Participant1IsHome: true,
+      Competition: "World Cup",
+      CompetitionId: 72,
+    };
+    const friendly = {
+      FixtureId: 200,
+      StartTime: Date.parse("2030-06-20T15:00:00.000Z"),
+      Participant1: "Myanmar",
+      Participant2: "Vietnam",
+      Participant1IsHome: true,
+      Competition: "Friendlies",
+      CompetitionId: 430,
+    };
+    const fetchImpl = vi.fn(async (input: URL | RequestInfo) => {
+      const url = String(input);
+      return url.endsWith("/auth/guest/start")
+        ? new Response(JSON.stringify({ token: "jwt" }), { status: 200 })
+        : new Response(JSON.stringify([worldCup, friendly]), { status: 200 });
+    }) as typeof fetch;
+    const client = createLiveTxLineClient({ db: recordingDb, env, fetchImpl });
+
+    await client.prepare();
+
+    expect(inserted).toEqual([
+      { id: "100", competitionId: 72 },
+      { id: "200", competitionId: 430 },
+    ]);
     await client.stop();
   });
 

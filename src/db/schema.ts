@@ -116,6 +116,11 @@ export const fixtures = pgTable(
     startsAt: timestamp("starts_at", { withTimezone: true }).notNull(),
     gameState: fixtureGameState("game_state").notNull().default("scheduled"),
     stage: fixtureStage("stage").notNull().default("group"),
+    // TxLINE competition the fixture belongs to (CompetitionId 72 = World Cup,
+    // 430 = Friendlies). Drives the ingest-side competition filter. Nullable:
+    // pre-existing rows and older captures without the field stay NULL.
+    competitionId: integer("competition_id"),
+    competition: text("competition"),
     // Durable TxLINE cursor: accept an event only if its sequence is newer.
     lastSeq: integer("last_seq").notNull().default(0),
     // Current per-team stat totals from TxLINE, advanced atomically with

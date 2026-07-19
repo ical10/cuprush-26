@@ -197,7 +197,20 @@ describe("txLineFixtureSnapshotSchema", () => {
       gameState: "scheduled",
       seq: 0,
       stats: {},
+      competition: "World Cup",
+      competitionId: 72,
     });
+  });
+
+  it("tolerates absent Competition/CompetitionId, defaulting both to null", () => {
+    const { Competition, CompetitionId, ...withoutCompetition } = wireSnapshotEntry;
+    void Competition;
+    void CompetitionId;
+
+    const result = txLineFixtureSnapshotSchema.parse(withoutCompetition);
+
+    expect(result.competition).toBeNull();
+    expect(result.competitionId).toBeNull();
   });
 
   it("swaps team names when Participant1IsHome is false", () => {
@@ -216,7 +229,12 @@ describe("txLineFixtureSnapshotSchema", () => {
     expect(result).toHaveLength(10);
     expect(result.every((fixture) => fixture.gameState === "scheduled")).toBe(true);
     const usa = result.find((fixture) => fixture.fixtureId === "18193785");
-    expect(usa).toMatchObject({ homeTeam: "USA", awayTeam: "Belgium" });
+    expect(usa).toMatchObject({
+      homeTeam: "USA",
+      awayTeam: "Belgium",
+      competition: "World Cup",
+      competitionId: 72,
+    });
   });
 });
 
