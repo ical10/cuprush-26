@@ -62,6 +62,11 @@ body {
   align-items: center;
   padding: 0.5rem 0;
 }
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
 .topbar-cta {
   color: var(--ink);
   text-decoration: none;
@@ -318,6 +323,15 @@ body {
   gap: 0.6rem;
 }
 .footer-note { color: var(--muted); font-size: 0.8rem; max-width: 40rem; }
+.footer-link {
+  color: var(--muted);
+  font-size: 0.8rem;
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  transition: text-decoration-color 140ms ease, color 140ms ease;
+  width: fit-content;
+}
+.footer-link:hover { color: var(--ink); text-decoration-color: var(--muted); }
 
 /* ---------- entrance ---------- */
 .reveal {
