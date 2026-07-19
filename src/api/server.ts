@@ -23,6 +23,10 @@ const app = createApp();
 if (existsSync("./dist/client")) {
   app.get("/app", serveStatic({ path: "./dist/client/app.html" }));
   app.get("/app/*", serveStatic({ path: "./dist/client/app.html" }));
+  app.get(
+    "/cuprush-litepaper",
+    serveStatic({ path: "./dist/client/cuprush-litepaper.pdf" }),
+  );
   app.use("/*", serveStatic({ root: "./dist/client" }));
   app.get("*", serveStatic({ path: "./dist/client/index.html" }));
 }
