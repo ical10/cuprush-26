@@ -25,6 +25,7 @@
     "seed:agents": "tsx --env-file-if-exists=.env src/db/seed-agents.ts",
     "seed:replays": "tsx --env-file-if-exists=.env src/db/seed-replays.ts",
     "cleanup:fixtures": "tsx --env-file-if-exists=.env src/db/cleanup-fixtures.ts",
+    "backfill:wallets": "tsx --env-file-if-exists=.env src/db/backfill-wallets.ts",
     "provision:agents": "tsx --env-file-if-exists=.env src/agents/provision.ts"
   },
   "dependencies": {
