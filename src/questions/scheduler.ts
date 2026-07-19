@@ -1,7 +1,12 @@
-import { and, eq, lte } from "drizzle-orm";
+import { and, eq, like, lte } from "drizzle-orm";
 import type { Database } from "../db/client";
 import { fixtures, questions, type FixtureGameState, type QuestionStatus } from "../db/schema";
 import { onFixtureUpdate, type FixtureUpdate } from "../txline/bus";
+import {
+  createReplayStatsFetcher,
+  parseReplayId,
+  type ReplayStatsFetcher,
+} from "../txline/replay-source";
 import { resolveGenerationContext, persistGeneratedQuestions } from "./generate";
 import { selectQuestions, type SelectQuestionsOptions } from "./llm-selector";
 
@@ -24,6 +29,23 @@ import { selectQuestions, type SelectQuestionsOptions } from "./llm-selector";
 const SIX_HOURS_MS = 6 * 60 * 60 * 1000;
 const THIRTY_MINUTES_MS = 30 * 60 * 1000;
 const DEFAULT_TICK_INTERVAL_MS = 60_000;
+
+// Replay fixtures (seed:replays) have no live event stream: they sit
+// `scheduled` with empty stats, and this finisher — once their notional match
+// duration has elapsed — fetches the source match's final TxLINE scores
+// snapshot, attaches those stats, and flips them `finished` in one update.
+// From there the existing catch-up path carries their questions
+// locked->live->settling. TxLINE stays the sole stats authority.
+const REPLAY_ID_PATTERN = "replay-%";
+const DEFAULT_REPLAY_MATCH_DURATION_MS = 30 * 60 * 1000;
+
+/** REPLAY_MATCH_DURATION_MS (env), the notional wall-clock length of a replay. */
+export function replayMatchDurationMs(env: NodeJS.ProcessEnv = process.env): number {
+  const raw = env.REPLAY_MATCH_DURATION_MS;
+  if (raw === undefined) return DEFAULT_REPLAY_MATCH_DURATION_MS;
+  const parsed = Number(raw);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : DEFAULT_REPLAY_MATCH_DURATION_MS;
+}
 
 // --- pure lifecycle rules (no DB — see scheduler.test.ts) -------------------
 
@@ -82,6 +104,7 @@ export type TickResult = {
   questionsInserted: number;
   openedCount: number;
   lockedCount: number;
+  replaysFinishedCount: number;
   fixtureCatchUpCount: number;
   overdueSettlingCount: number;
 };
@@ -92,6 +115,12 @@ export type SchedulerOptions = {
   intervalMs?: number;
   /** Passed through to the LLM selector for background generation (issue 5). */
   selectorOptions?: SelectQuestionsOptions;
+  /**
+   * TxLINE stats fetcher the replay finisher calls at finish time. Defaults
+   * to one built from env creds; `null` (or absent creds) makes the finisher
+   * no-op with a one-time warning instead of crashing the tick.
+   */
+  replayStatsFetcher?: ReplayStatsFetcher | null;
 };
 
 export interface QuestionScheduler {
@@ -108,8 +137,13 @@ export interface QuestionScheduler {
 export function createQuestionScheduler(options: SchedulerOptions): QuestionScheduler {
   const { db } = options;
   const clock = options.clock ?? (() => new Date());
+  const replayStatsFetcher =
+    options.replayStatsFetcher !== undefined
+      ? options.replayStatsFetcher
+      : createReplayStatsFetcher(process.env);
   let timer: ReturnType<typeof setInterval> | undefined;
   let unsubscribe: (() => void) | undefined;
+  let replayFetcherWarned = false;
 
   async function generateForUpcomingFixtures(): Promise<{
     fixturesGenerated: number;
@@ -169,6 +203,71 @@ export function createQuestionScheduler(options: SchedulerOptions): QuestionSche
     return overdue.length;
   }
 
+  /**
+   * Finishes due replay fixtures (id LIKE 'replay-%', still `scheduled`, past
+   * startsAt + REPLAY_MATCH_DURATION_MS): fetches each one's source match from
+   * TxLINE, writes the final stats and `finished` in a single conditional
+   * update. Runs before catchUpFixtureDrivenStatuses in the tick, so the same
+   * pass carries the fixture's now-locked questions locked->live->settling.
+   *
+   * A fetch/parse failure logs once and leaves the fixture `scheduled` — the
+   * next tick retries (the tick cadence is the retry bound). With no fetcher
+   * (creds absent), it warns once and no-ops rather than crashing the tick.
+   */
+  async function finishDueReplayFixtures(now: Date): Promise<number> {
+    const cutoff = new Date(now.getTime() - replayMatchDurationMs());
+    const due = await db
+      .select({ id: fixtures.id })
+      .from(fixtures)
+      .where(
+        and(
+          like(fixtures.id, REPLAY_ID_PATTERN),
+          eq(fixtures.gameState, "scheduled"),
+          lte(fixtures.startsAt, cutoff),
+        ),
+      );
+    if (due.length === 0) return 0;
+
+    if (!replayStatsFetcher) {
+      if (!replayFetcherWarned) {
+        replayFetcherWarned = true;
+        console.warn(
+          JSON.stringify({
+            event: "replay_finisher_disabled",
+            reason: "no TxLINE creds (TXLINE_BASE_URL/TXLINE_API_KEY) — replay fixtures will not finish here",
+            pendingReplayCount: due.length,
+          }),
+        );
+      }
+      return 0;
+    }
+
+    let finished = 0;
+    for (const { id } of due) {
+      const parsed = parseReplayId(id);
+      if (!parsed) continue;
+      try {
+        const { stats, lastSeq } = await replayStatsFetcher(parsed.sourceId);
+        const updated = await db
+          .update(fixtures)
+          .set({ gameState: "finished", stats, lastSeq })
+          .where(and(eq(fixtures.id, id), eq(fixtures.gameState, "scheduled")))
+          .returning({ id: fixtures.id });
+        finished += updated.length;
+      } catch (error) {
+        console.error(
+          JSON.stringify({
+            event: "replay_finish_failed",
+            fixtureId: id,
+            sourceId: parsed.sourceId,
+            error: error instanceof Error ? error.message : String(error),
+          }),
+        );
+      }
+    }
+    return finished;
+  }
+
   async function catchUpFixtureDrivenStatuses(now: Date): Promise<number> {
     const currentFixtures = await db
       .select({ id: fixtures.id, gameState: fixtures.gameState })
@@ -215,6 +314,7 @@ export function createQuestionScheduler(options: SchedulerOptions): QuestionSche
     const now = clock();
     const { fixturesGenerated, questionsInserted } = await generateForUpcomingFixtures();
     const { opened, locked } = await advanceTimeDrivenStatuses(now);
+    const replaysFinishedCount = await finishDueReplayFixtures(now);
     const fixtureCatchUpCount = await catchUpFixtureDrivenStatuses(now);
     const overdueSettlingCount = await scanOverdueSettling(now);
 
@@ -223,6 +323,7 @@ export function createQuestionScheduler(options: SchedulerOptions): QuestionSche
       questionsInserted,
       openedCount: opened,
       lockedCount: locked,
+      replaysFinishedCount,
       fixtureCatchUpCount,
       overdueSettlingCount,
     };
