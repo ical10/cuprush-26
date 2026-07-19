@@ -399,6 +399,34 @@ describe("GET /api/leaderboard", () => {
     expect(rows.some((r) => r.displayName === humanName)).toBe(false);
   });
 
+  it("keeps fully tied rows in a stable order across requests", async () => {
+    // Identical points and best streak: only the createdAt/id tiebreaker
+    // keeps these rows from shuffling between refreshes.
+    const prefix = `lb-tie-${randomUUID().slice(0, 8)}`;
+    for (let i = 0; i < 3; i++) {
+      await db.insert(participants).values({
+        kind: "human",
+        displayName: `${prefix}-${i}`,
+        points: 8_000_000,
+        bestStreak: 4,
+      });
+    }
+
+    const readTied = async () => {
+      const res = await app.request("/api/leaderboard");
+      expect(res.status).toBe(200);
+      const rows: { displayName: string | null }[] = await res.json();
+      return rows
+        .map((r) => r.displayName)
+        .filter((name) => name?.startsWith(prefix));
+    };
+
+    const first = await readTied();
+    expect(first).toHaveLength(3);
+    expect(await readTied()).toEqual(first);
+    expect(await readTied()).toEqual(first);
+  });
+
   it("ignores an unrecognized ?kind value and falls back to Overall", async () => {
     const res = await app.request("/api/leaderboard?kind=nonsense");
     expect(res.status).toBe(200);
@@ -556,7 +584,7 @@ describe("POST /api/wallet/delegation/revoke", () => {
 });
 
 describe("DELETE /api/me", () => {
-  it("anonymizes: deletes the users row, nulls the display name, keeps the participant and wallet link", async () => {
+  it("anonymizes: deletes the users row, nulls the display name and wallet address, keeps the participant", async () => {
     const token = devToken();
     const privyUserId = token.slice("dev:".length);
     const address = base58Address();
@@ -589,8 +617,31 @@ describe("DELETE /api/me", () => {
       .where(eq(participants.id, participantId));
     expect(participant).toBeDefined();
     expect(participant!.displayName).toBeNull();
-    expect(participant!.walletAddress).toBe(address);
+    expect(participant!.walletAddress).toBeNull();
     expect(participant!.delegationRevokedAt).not.toBeNull();
+  });
+
+  it("releases the wallet address so a re-signup with the same embedded wallet can claim it", async () => {
+    const token = devToken();
+    const address = base58Address();
+
+    await app.request(
+      "/api/wallet",
+      authed(token, { method: "POST", body: JSON.stringify({ address }) }),
+    );
+    await app.request("/api/me", authed(token, { method: "DELETE" }));
+
+    // Same identity signs in again; Privy hands back the same embedded
+    // wallet, so the fresh participant must be able to claim the address.
+    const res = await app.request(
+      "/api/wallet",
+      authed(token, { method: "POST", body: JSON.stringify({ address }) }),
+    );
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ walletAddress: address });
+
+    const me = await app.request("/api/me", authed(token));
+    expect(await me.json()).toMatchObject({ walletAddress: address });
   });
 
   it("provisions a fresh participant if the same identity signs in again", async () => {

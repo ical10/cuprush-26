@@ -68,10 +68,13 @@ export function createAccountRoutes(getDb: DbProvider, auth: AuthAdapter) {
   });
 
   // Anonymizes the off-chain profile: clears the display name, deletes the
-  // users row (the Privy identity mapping), and marks delegation revoked.
-  // The participant row and its wallet link survive so retained predictions
-  // stay attributable to an (anonymous) participant, and on-chain data can
-  // never be erased — the client must disclose that before confirming.
+  // users row (the Privy identity mapping), marks delegation revoked, and
+  // releases the unique wallet address — Privy hands the same embedded wallet
+  // back on re-signup, so keeping the address here would make POST /wallet
+  // 409 forever for the new account. The participant row survives so retained
+  // predictions stay attributable to an (anonymous) participant, and on-chain
+  // data can never be erased — the client must disclose that before
+  // confirming.
   app.delete("/me", requireAuth, async (c) => {
     const db = await getDb();
     const participantId = c.get("participant").id;
@@ -81,6 +84,7 @@ export function createAccountRoutes(getDb: DbProvider, auth: AuthAdapter) {
         .update(participants)
         .set({
           displayName: null,
+          walletAddress: null,
           // Keep the first revocation timestamp if delegation was already
           // revoked before deletion.
           delegationRevokedAt: sql`coalesce(${participants.delegationRevokedAt}, now())`,
