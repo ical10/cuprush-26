@@ -54,12 +54,28 @@ export default defineConfig({
     VitePWA({
       registerType: "autoUpdate",
       scope: "/app",
+      // Registration lives in src/web/main.tsx (virtual:pwa-register) so the
+      // app controls update polling and controllerchange reloads.
+      injectRegister: false,
       // The Privy chunk (~4.3 MB) exceeds Workbox's 2 MiB precache limit and
-      // shouldn't be precached anyway — the browser HTTP cache handles it.
+      // shouldn't be precached anyway — it's runtime-cached below instead.
       workbox: {
         globIgnores: ["**/privy-*.js"],
         navigateFallback: "/app.html",
         navigateFallbackAllowlist: [/^\/app/],
+        runtimeCaching: [
+          {
+            // Same-origin only: a RegExp route can never match a cross-origin
+            // URL mid-string (Workbox requires index-0 matches cross-origin).
+            urlPattern: /\/assets\/privy-[^/]+\.js$/,
+            handler: "CacheFirst",
+            options: {
+              cacheName: "privy-chunk",
+              expiration: { maxEntries: 4 },
+              cacheableResponse: { statuses: [200] },
+            },
+          },
+        ],
       },
       includeAssets: ["favicon.png", "og-cuprush.png"],
       manifest: {

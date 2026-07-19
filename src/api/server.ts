@@ -27,8 +27,31 @@ if (existsSync("./dist/client")) {
     "/cuprush-litepaper",
     serveStatic({ path: "./dist/client/cuprush-litepaper.pdf" }),
   );
+  // Built assets are content-hashed, so they can be cached forever. Without
+  // this the server sends no Cache-Control at all and clients revalidate on
+  // heuristics — deadly for the runtime-cached Privy chunk.
+  app.use(
+    "/assets/*",
+    serveStatic({
+      root: "./dist/client",
+      onFound: (_path, c) => {
+        c.header("Cache-Control", "public, max-age=31536000, immutable");
+      },
+    }),
+  );
   app.use("/*", serveStatic({ root: "./dist/client" }));
-  app.get("*", serveStatic({ path: "./dist/client/index.html" }));
+  // An /api path reaching this point matched no route — that's a 404, not
+  // the landing page. Same for anything that looks like a file (dot in the
+  // last segment): a missing asset must fail loudly, not return HTML 200.
+  app.all("/api/*", (c) => c.json({ error: "not found" }, 404));
+  const landingFallback = serveStatic({ path: "./dist/client/index.html" });
+  app.get("*", async (c, next) => {
+    const lastSegment = c.req.path.split("/").pop() ?? "";
+    if (lastSegment.includes(".")) {
+      return c.notFound();
+    }
+    return (await landingFallback(c, next)) ?? c.notFound();
+  });
 }
 
 const port = Number(process.env.PORT ?? 3000);
