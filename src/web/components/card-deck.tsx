@@ -20,6 +20,32 @@ type Props = {
 
 type SubmitState = "idle" | "submitting" | "done" | "failed";
 
+// Server error strings (src/api/routes/predictions.ts) mapped to friendlier
+// client copy. Matched by stable substring — the API client throws Error with
+// the server's error string verbatim.
+const LOCKED_MATCH = "locked";
+const WALLET_MATCH = "wallet is required";
+const RATE_LIMIT_MATCH = "too many";
+
+function isQuestionOpen(q: Question): boolean {
+  return q.status === "open" && Date.parse(q.locksAt) > Date.now();
+}
+
+function prunedNotice(dropped: number, surviving: number): string {
+  if (surviving === 0) {
+    return "All picks locked before they were saved — new cards open closer to kickoff.";
+  }
+  const droppedPart =
+    dropped === 1
+      ? "1 pick locked before it was saved and was removed."
+      : `${dropped} picks locked before they were saved and were removed.`;
+  const survivingPart =
+    surviving === 1
+      ? "1 pick is still open — lock it in now."
+      : `${surviving} picks are still open — lock them in now.`;
+  return `${droppedPart} ${survivingPart}`;
+}
+
 // A committed answer's exit: which card left and which way it flew. Drives
 // the removed card's exit variant (via AnimatePresence custom) and the
 // stage-fixed commit streak. Direction mirrors outcomeFromDrag: outcomes[0]
@@ -69,8 +95,25 @@ function Deck({ onNavigateAuth, initialAnswer, onInitialAnswerConsumed }: Props)
   const [pendingOutcome, setPendingOutcome] = useState<string | null>(null);
   const [submitState, setSubmitState] = useState<SubmitState>("idle");
   const [submitError, setSubmitError] = useState<string | null>(null);
+  // Notice about picks pruned because their question locked before the batch
+  // was saved (client pre-filter or server 409 recovery). Shown on the submit
+  // screen with the button re-armed for the surviving answers.
+  const [submitNotice, setSubmitNotice] = useState<string | null>(null);
+  // Notice about unanswered cards silently dropped mid-session because their
+  // locksAt passed while the deck was open.
+  const [deckNotice, setDeckNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const consumedInitial = useRef(false);
+  // Synchronous re-entrancy guard: submitState is set via async setState, so a
+  // double-fire (double click, retry race) could slip through before React
+  // re-renders. The ref flips synchronously and cannot.
+  const submitInFlight = useRef(false);
+  // Fresh values for the 30s lock-sweep interval, whose closure would
+  // otherwise capture the mount-time state.
+  const questionsRef = useRef<Question[] | null>(null);
+  questionsRef.current = questions;
+  const indexRef = useRef(0);
+  indexRef.current = index;
 
   // Deck = open questions the user hasn't already answered. Predictions are
   // durable server-side, so on reload we subtract the ones this user already
@@ -107,9 +150,47 @@ function Deck({ onNavigateAuth, initialAnswer, onInitialAnswerConsumed }: Props)
     setIndex((i) => i + 1);
   }, [questions, initialAnswer, isAuthenticated, onInitialAnswerConsumed]);
 
+  // Lock sweep: every 30s, drop remaining (unanswered) cards whose locksAt has
+  // passed so the user can't swipe into a server-side 409. Only positions at or
+  // after the current index are removed — already-given answers stay and go
+  // through the submit-time filter instead — so the index never needs to move:
+  // no card is skipped or repeated.
+  useEffect(() => {
+    const sweep = () => {
+      const qs = questionsRef.current;
+      if (!qs) return;
+      const idx = indexRef.current;
+      const next = qs.filter((q, pos) => pos < idx || Date.parse(q.locksAt) > Date.now());
+      const removed = qs.length - next.length;
+      if (removed === 0) return;
+      setQuestions(next);
+      setDeckNotice(
+        removed === 1
+          ? "1 card locked at kickoff and was removed."
+          : `${removed} cards locked at kickoff and were removed.`,
+      );
+    };
+    const id = setInterval(sweep, 30_000);
+    return () => clearInterval(id);
+  }, []);
+
+  // Answers are local-only until the batch submit; a refresh discards them.
+  // While unsaved picks exist, arm the native "leave site?" confirm.
+  const hasUnsavedPicks = answers.length > 0 && submitState !== "done";
+  useEffect(() => {
+    if (!hasUnsavedPicks) return;
+    const warn = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [hasUnsavedPicks]);
+
   const current = questions?.[index] ?? null;
 
   function record(question: Question, outcome: string) {
+    setDeckNotice(null);
     setLastCommit({
       questionId: question.id,
       direction: outcome === question.outcomes[0] ? 1 : -1,
@@ -136,15 +217,83 @@ function Deck({ onNavigateAuth, initialAnswer, onInitialAnswerConsumed }: Props)
     onNavigateAuth({ questionId: current.id, outcome: pendingOutcome });
   }
 
+  // Drops locked answers, tells the user what happened, and re-arms the
+  // submit button for the survivors. Shared by the submit-time pre-filter and
+  // the 409 recovery path.
+  function pruneLockedAnswers(surviving: BatchAnswer[], dropped: number) {
+    setAnswers(surviving);
+    setSubmitNotice(prunedNotice(dropped, surviving.length));
+    setSubmitError(null);
+    setSubmitState("idle");
+  }
+
+  // The server rejects the whole batch with 409 when ANY answer's question is
+  // past locks_at — resubmitting the identical array is doomed forever.
+  // Recover by refetching questions, dropping answers no longer open, and
+  // re-arming submit with the survivors.
+  async function recoverFromLockedBatch(serverMessage: string) {
+    let stillOpen: (answer: BatchAnswer) => boolean;
+    try {
+      const fresh = await fetchQuestions();
+      const openIds = new Set(fresh.filter(isQuestionOpen).map((q) => q.id));
+      stillOpen = (answer) => openIds.has(answer.questionId);
+    } catch {
+      // Refetch failed: fall back to the locksAt we already have locally.
+      const byId = new Map((questionsRef.current ?? []).map((q) => [q.id, q]));
+      stillOpen = (answer) => {
+        const q = byId.get(answer.questionId);
+        return q !== undefined && Date.parse(q.locksAt) > Date.now();
+      };
+    }
+    const surviving = answers.filter(stillOpen);
+    if (surviving.length === answers.length) {
+      // The server says locked but nothing looks locked client-side (clock
+      // skew): keep the plain failure so Retry stays available.
+      setSubmitError(serverMessage);
+      setSubmitState("failed");
+      return;
+    }
+    pruneLockedAnswers(surviving, answers.length - surviving.length);
+  }
+
   async function submit() {
+    if (submitInFlight.current) return;
+    submitInFlight.current = true;
+    setSubmitNotice(null);
     setSubmitState("submitting");
     try {
+      // Pre-filter answers already past locksAt so an obviously doomed batch
+      // never leaves the client.
+      const byId = new Map((questionsRef.current ?? []).map((q) => [q.id, q]));
+      const surviving = answers.filter((answer) => {
+        const q = byId.get(answer.questionId);
+        return q !== undefined && Date.parse(q.locksAt) > Date.now();
+      });
+      if (surviving.length < answers.length) {
+        pruneLockedAnswers(surviving, answers.length - surviving.length);
+        return;
+      }
       await submitPredictionBatch(answers);
       setSubmitState("done");
       setSubmitError(null);
     } catch (err) {
-      setSubmitError(err instanceof Error ? err.message : "Submit failed.");
-      setSubmitState("failed");
+      const message = err instanceof Error ? err.message : "Submit failed.";
+      if (message.includes(LOCKED_MATCH)) {
+        await recoverFromLockedBatch(message);
+      } else if (message.includes(WALLET_MATCH)) {
+        setSubmitError(
+          "Your wallet is still being set up — this usually takes a few seconds. Retry in a moment.",
+        );
+        setSubmitState("failed");
+      } else if (message.includes(RATE_LIMIT_MATCH)) {
+        setSubmitError("Too many attempts — wait a minute and retry.");
+        setSubmitState("failed");
+      } else {
+        setSubmitError(message);
+        setSubmitState("failed");
+      }
+    } finally {
+      submitInFlight.current = false;
     }
   }
 
@@ -180,6 +329,11 @@ function Deck({ onNavigateAuth, initialAnswer, onInitialAnswerConsumed }: Props)
         <p className="submit-title">
           You've answered {answers.length} of {total}.
         </p>
+        {submitNotice && (
+          <p className="deck-progress" role="status">
+            {submitNotice}
+          </p>
+        )}
         {submitState === "failed" && (
           <TxStatus state="failed" message={submitError} onRetry={() => void submit()} />
         )}
@@ -204,6 +358,11 @@ function Deck({ onNavigateAuth, initialAnswer, onInitialAnswerConsumed }: Props)
       <p className="deck-progress">
         Card {index + 1} of {total}
       </p>
+      {deckNotice && (
+        <p className="deck-progress" role="status">
+          {deckNotice}
+        </p>
+      )}
 
       <div className="deck-group">
         <div className="deck-stage">

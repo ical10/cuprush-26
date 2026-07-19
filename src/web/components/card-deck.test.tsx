@@ -15,14 +15,15 @@ const { fetchQuestions, fetchMyPredictions, submitPredictionBatch } = vi.hoisted
 
 vi.mock("../lib/api", () => ({ fetchQuestions, fetchMyPredictions, submitPredictionBatch }));
 
-function question(id: string): Question {
+function question(id: string, overrides: Partial<Question> = {}): Question {
   return {
     id,
     template: "winner",
     status: "open",
     result: null,
     opensAt: new Date().toISOString(),
-    locksAt: new Date().toISOString(),
+    // Open questions lock in the future; lock-handling tests override this.
+    locksAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
     settledAt: null,
     question: `Q ${id}?`,
     outcomes: ["yes", "no"],
@@ -43,6 +44,7 @@ function question(id: string): Question {
       gameState: "scheduled",
       stats: {},
     },
+    ...overrides,
   };
 }
 
@@ -250,6 +252,157 @@ describe("CardDeck batching", () => {
     );
     await screen.findByText("Q q1?");
     expect(submitPredictionBatch).not.toHaveBeenCalled();
+  });
+
+  it("recovers from a batch 409 by pruning locked answers and re-arming submit", async () => {
+    fetchQuestions.mockResolvedValueOnce([question("q1"), question("q2")]);
+    const user = userEvent.setup();
+    renderDeck();
+
+    await screen.findByText("Q q1?");
+    await user.click(screen.getByRole("button", { name: "Yes" }));
+    await screen.findByText("Q q2?");
+    await user.click(screen.getByRole("button", { name: "No" }));
+
+    // q1 locked server-side mid-session: the whole batch 409s, and the
+    // refetch shows q1 gone from the open set while q2 is still open.
+    submitPredictionBatch.mockRejectedValueOnce(
+      new Error("predictions are locked for this batch"),
+    );
+    fetchQuestions.mockResolvedValueOnce([
+      question("q1", { status: "locked", locksAt: new Date(Date.now() - 1000).toISOString() }),
+      question("q2"),
+    ]);
+    await user.click(await screen.findByRole("button", { name: "Lock my picks" }));
+
+    // The doomed pick is dropped with a plain explanation, not an error loop.
+    await screen.findByText(
+      "1 pick locked before it was saved and was removed. 1 pick is still open — lock it in now.",
+    );
+
+    // The re-armed submit sends only the surviving answer.
+    submitPredictionBatch.mockResolvedValueOnce([{ chainStatus: "pending" }]);
+    await user.click(screen.getByRole("button", { name: "Lock my picks" }));
+    await waitFor(() => expect(submitPredictionBatch).toHaveBeenCalledTimes(2));
+    expect(submitPredictionBatch).toHaveBeenLastCalledWith([
+      { questionId: "q2", outcome: "no" },
+    ]);
+    await screen.findByText("Saved. Locks on Solana before kickoff.");
+  });
+
+  it("states honestly when every answer locked before it could be saved", async () => {
+    fetchQuestions.mockResolvedValueOnce([question("q1")]);
+    const user = userEvent.setup();
+    renderDeck();
+
+    await screen.findByText("Q q1?");
+    await user.click(screen.getByRole("button", { name: "Yes" }));
+
+    submitPredictionBatch.mockRejectedValueOnce(
+      new Error("predictions are locked for this batch"),
+    );
+    fetchQuestions.mockResolvedValueOnce([
+      question("q1", { status: "locked", locksAt: new Date(Date.now() - 1000).toISOString() }),
+    ]);
+    await user.click(await screen.findByRole("button", { name: "Lock my picks" }));
+
+    await screen.findByText(
+      "All picks locked before they were saved — new cards open closer to kickoff.",
+    );
+    // Nothing survives, so there is nothing to resubmit.
+    expect(submitPredictionBatch).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("button", { name: "Lock my picks" })).toBeDisabled();
+  });
+
+  it("pre-filters answers already past locksAt before the batch leaves the client", async () => {
+    // q2's lock passes while the user answers — the server would 409 the batch.
+    fetchQuestions.mockResolvedValue([
+      question("q1"),
+      question("q2", { locksAt: new Date(Date.now() - 1000).toISOString() }),
+    ]);
+    const user = userEvent.setup();
+    renderDeck();
+
+    await screen.findByText("Q q1?");
+    await user.click(screen.getByRole("button", { name: "Yes" }));
+    await screen.findByText("Q q2?");
+    await user.click(screen.getByRole("button", { name: "No" }));
+    await user.click(await screen.findByRole("button", { name: "Lock my picks" }));
+
+    // The locked pick never reaches the network; the user is told plainly.
+    await screen.findByText(
+      "1 pick locked before it was saved and was removed. 1 pick is still open — lock it in now.",
+    );
+    expect(submitPredictionBatch).not.toHaveBeenCalled();
+
+    submitPredictionBatch.mockResolvedValueOnce([{ chainStatus: "pending" }]);
+    await user.click(screen.getByRole("button", { name: "Lock my picks" }));
+    await waitFor(() => expect(submitPredictionBatch).toHaveBeenCalledTimes(1));
+    expect(submitPredictionBatch).toHaveBeenCalledWith([{ questionId: "q1", outcome: "yes" }]);
+  });
+
+  it("softens the wallet-not-ready 400 into a retryable message", async () => {
+    fetchQuestions.mockResolvedValue([question("q1")]);
+    submitPredictionBatch.mockRejectedValueOnce(
+      new Error("a wallet is required before saving predictions"),
+    );
+    const user = userEvent.setup();
+    renderDeck();
+
+    await screen.findByText("Q q1?");
+    await user.click(screen.getByRole("button", { name: "Yes" }));
+    await user.click(await screen.findByRole("button", { name: "Lock my picks" }));
+
+    await screen.findByText(
+      "Your wallet is still being set up — this usually takes a few seconds. Retry in a moment.",
+    );
+    // Retry stays available and genuinely likely to succeed.
+    submitPredictionBatch.mockResolvedValueOnce([{ chainStatus: "pending" }]);
+    await user.click(screen.getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(submitPredictionBatch).toHaveBeenCalledTimes(2));
+  });
+
+  it("softens the 429 rate limit into wait-and-retry copy", async () => {
+    fetchQuestions.mockResolvedValue([question("q1")]);
+    submitPredictionBatch.mockRejectedValueOnce(new Error("too many submissions, slow down"));
+    const user = userEvent.setup();
+    renderDeck();
+
+    await screen.findByText("Q q1?");
+    await user.click(screen.getByRole("button", { name: "Yes" }));
+    await user.click(await screen.findByRole("button", { name: "Lock my picks" }));
+
+    await screen.findByText("Too many attempts — wait a minute and retry.");
+  });
+
+  it("drops a mid-session locked card from the remaining deck on the 30s sweep", async () => {
+    // q2's locksAt has passed but its status still says open (server lag):
+    // the deck shows it until the sweep catches up.
+    fetchQuestions.mockResolvedValue([
+      question("q1"),
+      question("q2", { locksAt: new Date(Date.now() - 1000).toISOString() }),
+      question("q3"),
+    ]);
+    const intervalSpy = vi.spyOn(window, "setInterval");
+    try {
+      renderDeck();
+      await screen.findByText("Q q1?");
+      expect(screen.getByText("Card 1 of 3")).toBeInTheDocument();
+
+      // Fire the 30s sweep without waiting 30s of wall clock.
+      const sweep = intervalSpy.mock.calls.find(([, delay]) => delay === 30_000)?.[0] as
+        | (() => void)
+        | undefined;
+      expect(sweep).toBeDefined();
+      act(() => sweep!());
+
+      // The current card is untouched; the locked upcoming card is gone.
+      await screen.findByText("1 card locked at kickoff and was removed.");
+      expect(screen.getByText("Card 1 of 2")).toBeInTheDocument();
+      expect(screen.getByText("Q q1?")).toBeInTheDocument();
+    } finally {
+      intervalSpy.mockRestore();
+    }
   });
 
   it("disables the rail and the card while the sign-in gate is open", async () => {
