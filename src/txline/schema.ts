@@ -180,6 +180,11 @@ export const txLineFixtureSnapshotSchema = z
     Participant1: z.string().min(1),
     Participant2: z.string().min(1),
     Participant1IsHome: z.boolean(),
+    // Competition metadata drives the ingest-side competition filter. Both are
+    // optional: older captures/samples may lack them, in which case the
+    // fixture carries a null competition (allowed only when no filter is set).
+    Competition: z.string().min(1).optional(),
+    CompetitionId: z.number().int().optional(),
   })
   .transform((raw) => ({
     fixtureId: String(raw.FixtureId),
@@ -189,6 +194,8 @@ export const txLineFixtureSnapshotSchema = z
     gameState: "scheduled" as FixtureGameState,
     seq: 0,
     stats: {} as FixtureStats,
+    competition: raw.Competition ?? null,
+    competitionId: raw.CompetitionId ?? null,
   }));
 
 export type TxLineFixtureSnapshot = z.infer<typeof txLineFixtureSnapshotSchema>;

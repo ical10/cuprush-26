@@ -15,6 +15,8 @@ function makeRow(overrides: Partial<FixtureRow> = {}): FixtureRow {
     startsAt: new Date(2026, 5, counter),
     gameState: "finished",
     stage: "group",
+    competitionId: null,
+    competition: null,
     lastSeq: 0,
     stats: {},
     createdAt: new Date(2026, 5, counter),

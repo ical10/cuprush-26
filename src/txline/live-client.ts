@@ -2,7 +2,7 @@ import { z } from "zod";
 import type { Database } from "../db/client";
 import { fixtures } from "../db/schema";
 import { applyTxLineEvent, toFixtureUpdate } from "./apply";
-import { isFixtureAllowed, parseTeamAllowlist } from "./allowlist";
+import { isFixtureInCompetition, parseCompetitionId } from "./competition";
 import { publishFixtureUpdate, type FixtureUpdatePublisher } from "./bus";
 import {
   parseScoreSnapshot,
@@ -232,7 +232,7 @@ function sleepWithSignal(milliseconds: number, signal: AbortSignal): Promise<voi
 
 export function createLiveTxLineClient(options: LiveClientOptions): TxLineClient {
   const config = readLiveConfig(options.env);
-  const allowlist = parseTeamAllowlist(options.env.TXLINE_TEAM_ALLOWLIST);
+  const competitionFilter = parseCompetitionId(options.env.TXLINE_COMPETITION_ID);
   const authorizedFetch = createAuthorizedFetch(config, options.fetchImpl ?? fetch);
   const publishUpdate = options.publishUpdate ?? publishFixtureUpdate;
   const reconnectDelaysMs = options.reconnectDelaysMs ?? DEFAULT_RECONNECT_DELAYS_MS;
@@ -262,14 +262,20 @@ export function createLiveTxLineClient(options: LiveClientOptions): TxLineClient
   }
 
   async function discoverFixtures(signal: AbortSignal): Promise<TxLineFixtureSnapshot[]> {
+    // The devnet `GET /api/fixtures/snapshot` endpoint appears to support a
+    // server-side competition filter (a `fixtures-snapshot-competition-72`
+    // capture exists), but the exact query-param name is not documented in any
+    // capture script, README, or commit, so we cannot request it filtered.
+    // The client-side gate below is the single source of truth for now; add a
+    // server-side param here (keeping this guard) once the name is known.
     const raw = await fetchJson("/api/fixtures/snapshot", signal);
     const snapshots = txLineFixtureListSchema.parse(raw);
 
     const allowed: TxLineFixtureSnapshot[] = [];
     for (const snapshot of snapshots) {
-      if (!isFixtureAllowed(allowlist, snapshot.homeTeam, snapshot.awayTeam)) {
+      if (!isFixtureInCompetition(competitionFilter, snapshot.competitionId)) {
         console.warn(
-          `TxLINE fixture ${snapshot.fixtureId} skipped: ${snapshot.homeTeam} vs ${snapshot.awayTeam} not in TXLINE_TEAM_ALLOWLIST`,
+          `TxLINE fixture ${snapshot.fixtureId} skipped: competition ${snapshot.competitionId ?? "unknown"} (${snapshot.competition ?? "unknown"}) does not match TXLINE_COMPETITION_ID`,
         );
         continue;
       }
@@ -283,6 +289,8 @@ export function createLiveTxLineClient(options: LiveClientOptions): TxLineClient
           gameState: snapshot.gameState,
           lastSeq: snapshot.seq,
           stats: snapshot.stats,
+          competition: snapshot.competition,
+          competitionId: snapshot.competitionId,
         })
         .onConflictDoUpdate({
           target: fixtures.id,
@@ -290,6 +298,8 @@ export function createLiveTxLineClient(options: LiveClientOptions): TxLineClient
             homeTeam: snapshot.homeTeam,
             awayTeam: snapshot.awayTeam,
             startsAt: new Date(snapshot.startsAt),
+            competition: snapshot.competition,
+            competitionId: snapshot.competitionId,
           },
         });
       allowed.push(snapshot);
