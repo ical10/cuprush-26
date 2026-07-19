@@ -103,6 +103,26 @@ describe("QuestionCard", () => {
     expect(card.getAttribute("style") ?? "").not.toContain("translateX(600px)");
   });
 
+  // Regression: an uncommitted release used to end in framer's unconstrained
+  // momentum animation, leaving the card resting wherever release velocity
+  // carried it (production QA: 41px off-center after dismissing the guest
+  // sign-in gate). dragSnapToOrigin must spring it back to x=0.
+  it("springs back to center after a drag onAnswer declines", async () => {
+    const onAnswer = vi.fn().mockReturnValue(false);
+    render(<QuestionCard question={question} onAnswer={onAnswer} />);
+    const card = screen.getByTestId("question-card");
+    await drag(card, 150);
+
+    const centered = () => {
+      const transform = card.style.transform;
+      return transform === "none" || transform === "" || transform.includes("translateX(0px)");
+    };
+    // Bounded frame ticks: the snap spring settles well within this, and a
+    // regression fails the assertion instead of hanging.
+    for (let i = 0; i < 300 && !centered(); i++) await nextFrame();
+    expect(centered()).toBe(true);
+  });
+
   it("reveals the would-be outcome only after the drag crosses the threshold", async () => {
     render(<QuestionCard question={question} onAnswer={() => true} />);
     const card = screen.getByTestId("question-card");

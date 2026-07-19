@@ -54,9 +54,10 @@ export function QuestionCard({ question, onAnswer, disabled }: Props) {
     );
     if (!outcome) return;
     // Accepted: the deck advances, AnimatePresence removes this instance, and
-    // the exit variant flies it out from the release position. Declined
-    // (guest sign-in gate): the deck stays put and animate={{ x: 0 }} springs
-    // the card back to center, still draggable.
+    // the exit variant flies it out from the release position (overriding the
+    // snap-to-origin spring). Declined (guest sign-in gate): the deck stays
+    // put and dragSnapToOrigin springs the card back to center, still
+    // draggable.
     onAnswer(outcome);
   }
 
@@ -71,6 +72,16 @@ export function QuestionCard({ question, onAnswer, disabled }: Props) {
       style={{ x, rotate }}
       drag={disabled ? false : "x"}
       dragElastic={0.6}
+      // Every uncommitted release (below threshold, or a guest hitting the
+      // sign-in gate) must recenter the card. `animate={{ x: 0 }}` can't do it
+      // (its target never changes, so it never re-runs), and a plain drag ends
+      // in an unconstrained momentum animation that settles wherever release
+      // velocity carries it — QA measured the card resting 41px off-center
+      // after dismissing the gate. dragSnapToOrigin swaps that momentum
+      // animation for a spring back to x=0; a committed card's exit variant
+      // starts right after and overrides the snap.
+      dragSnapToOrigin
+      dragTransition={{ bounceStiffness: 300, bounceDamping: 30 }}
       onDragEnd={handleDragEnd}
       animate={{ x: 0, opacity: 1 }}
       variants={{
