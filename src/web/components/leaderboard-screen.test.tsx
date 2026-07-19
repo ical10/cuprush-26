@@ -105,4 +105,39 @@ describe("LeaderboardScreen", () => {
     await waitFor(() => expect(fetchLeaderboard).toHaveBeenCalledWith("agent"));
     expect(screen.getByRole("tab", { name: "AI" })).toHaveAttribute("aria-selected", "true");
   });
+
+  it("drops a stale response that lands after a newer filter's response", async () => {
+    let resolveOverall!: (rows: LeaderboardRow[]) => void;
+    fetchLeaderboard.mockImplementationOnce(
+      () =>
+        new Promise<LeaderboardRow[]>((resolve) => {
+          resolveOverall = resolve;
+        }),
+    );
+    fetchLeaderboard.mockResolvedValueOnce([row({ displayName: "Fast Human" })]);
+    renderScreen();
+
+    await userEvent.click(screen.getByRole("tab", { name: "Humans" }));
+    await waitFor(() => expect(screen.getByText("Fast Human")).toBeInTheDocument());
+
+    // The slow Overall response lands last — it must not replace the rows.
+    resolveOverall([row({ displayName: "Slow Overall" })]);
+    await waitFor(() => expect(screen.getByText("Fast Human")).toBeInTheDocument());
+    expect(screen.queryByText("Slow Overall")).not.toBeInTheDocument();
+  });
+
+  it("shows a retry action on fetch failure instead of the empty state, and retries", async () => {
+    fetchLeaderboard.mockRejectedValueOnce(new Error("network down"));
+    fetchLeaderboard.mockResolvedValueOnce([row({ displayName: "After Retry" })]);
+    renderScreen();
+
+    await waitFor(() =>
+      expect(screen.getByText("Couldn't load the leaderboard.")).toBeInTheDocument(),
+    );
+    expect(screen.queryByText(/No fans on the board yet/)).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Retry" }));
+    await waitFor(() => expect(screen.getByText("After Retry")).toBeInTheDocument());
+    expect(screen.queryByText("Couldn't load the leaderboard.")).not.toBeInTheDocument();
+  });
 });

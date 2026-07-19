@@ -29,14 +29,27 @@ export function LeaderboardScreen() {
   const { isAuthenticated } = useAuth();
   const [filter, setFilter] = useState<LeaderboardFilter>("overall");
   const [rows, setRows] = useState<LeaderboardRow[] | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [retryKey, setRetryKey] = useState(0);
   const [me, setMe] = useState<Me | null>(null);
 
   useEffect(() => {
+    // Rapid tab switches race their responses; the cancelled flag drops any
+    // response that lands after this effect's filter is no longer current.
+    let cancelled = false;
     setRows(null);
+    setLoadFailed(false);
     fetchLeaderboard(filter === "overall" ? undefined : filter)
-      .then(setRows)
-      .catch(() => setRows([]));
-  }, [filter]);
+      .then((data) => {
+        if (!cancelled) setRows(data);
+      })
+      .catch(() => {
+        if (!cancelled) setLoadFailed(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [filter, retryKey]);
 
   useEffect(() => {
     if (isAuthenticated) fetchMe().then(setMe).catch(() => setMe(null));
@@ -63,7 +76,22 @@ export function LeaderboardScreen() {
           </button>
         ))}
       </div>
-      {!rows ? (
+      {loadFailed ? (
+        <EmptyState
+          icon={Shield}
+          action={
+            <button
+              type="button"
+              className="btn btn-primary"
+              onClick={() => setRetryKey((key) => key + 1)}
+            >
+              Retry
+            </button>
+          }
+        >
+          Couldn't load the leaderboard.
+        </EmptyState>
+      ) : !rows ? (
         <p className="empty-state">Loading leaderboard…</p>
       ) : rows.length === 0 ? (
         <EmptyState icon={Shield}>

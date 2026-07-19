@@ -1,4 +1,4 @@
-import { desc, eq } from "drizzle-orm";
+import { asc, desc, eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { agentCohorts, agents, participantKind, participants } from "../../db/schema";
 import type { DbProvider } from "../auth/middleware";
@@ -41,7 +41,14 @@ export function createLeaderboardRoute(getDb: DbProvider) {
       .leftJoin(agents, eq(agents.participantId, participants.id))
       .leftJoin(agentCohorts, eq(agentCohorts.id, agents.cohortId))
       .where(kind ? eq(participants.kind, kind) : undefined)
-      .orderBy(desc(participants.points), desc(participants.bestStreak))
+      // createdAt then id keep full ties stable across refreshes — without
+      // them, equal rows shuffle between requests.
+      .orderBy(
+        desc(participants.points),
+        desc(participants.bestStreak),
+        asc(participants.createdAt),
+        asc(participants.id),
+      )
       .limit(LEADERBOARD_LIMIT);
     return c.json(rows);
   });

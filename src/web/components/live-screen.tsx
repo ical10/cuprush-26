@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { fetchMyPredictions } from "../lib/api";
 import { useLive } from "../hooks/use-live";
 import { usePrefersReducedMotion } from "../hooks/use-reduced-motion";
@@ -46,15 +46,35 @@ function LiveValue({ value }: { value: number }) {
 export function LiveScreen() {
   const live = useLive();
   const [predictions, setPredictions] = useState<MyPrediction[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<"auth" | "load" | null>(null);
+  const hasLoaded = useRef(false);
 
-  useEffect(() => {
+  const loadPredictions = useCallback(() => {
     fetchMyPredictions()
-      .then((rows) => setPredictions(rows as MyPrediction[]))
-      .catch(() => setError("Sign in to see your live picks."));
+      .then((rows) => {
+        hasLoaded.current = true;
+        setPredictions(rows as MyPrediction[]);
+        setError(null);
+      })
+      .catch((err: unknown) => {
+        // Once we have data, a failed background refresh keeps the last good
+        // list instead of blanking the screen.
+        if (hasLoaded.current) return;
+        setError(
+          err instanceof Error && err.message === "unauthorized" ? "auth" : "load",
+        );
+      });
   }, []);
 
-  if (error) {
+  // A question can settle while this screen is open — refetch on an interval
+  // so its badge doesn't stay frozen at the mount-time status.
+  useEffect(() => {
+    loadPredictions();
+    const timer = setInterval(loadPredictions, 60_000);
+    return () => clearInterval(timer);
+  }, [loadPredictions]);
+
+  if (error === "auth") {
     return (
       <EmptyState
         icon={LogIn}
@@ -71,7 +91,26 @@ export function LiveScreen() {
           </Button>
         }
       >
-        {error}
+        Sign in to see your live picks.
+      </EmptyState>
+    );
+  }
+  if (error === "load") {
+    return (
+      <EmptyState
+        icon={Activity}
+        action={
+          <Button
+            type="button"
+            variant="secondary"
+            className="min-h-11"
+            onClick={loadPredictions}
+          >
+            Retry
+          </Button>
+        }
+      >
+        Couldn't load your live picks.
       </EmptyState>
     );
   }
