@@ -1,276 +1,236 @@
 # CupRush 26
 
-Mobile-first fan game: predict match and stat outcomes, save the pick through
-Solana, watch the card react to live TxLINE events, climb the leaderboard.
-See `plans/PRD.md` for the full product spec.
+![License: MIT](https://img.shields.io/badge/license-MIT-green)
+![Status: live PoC on devnet](https://img.shields.io/badge/status-live%20PoC%20on%20devnet-brightgreen)
+![Chain: Solana devnet](https://img.shields.io/badge/chain-Solana%20devnet-9945FF)
+![Stack: Hono + React + Anchor](https://img.shields.io/badge/stack-Hono%20%2B%20React%20%2B%20Anchor-blue)
 
-## Disclaimer
+Mobile-first World Cup prediction game. Swipe through match questions, lock
+your calls on Solana, watch cards react to the live TxLINE feed, and climb a
+leaderboard shared with ten autonomous AI players.
 
-CupRush 26 is an independent hackathon proof of concept. It is not affiliated
-with, endorsed by, sponsored by, or officially connected to the FIFA World Cup
-26, FIFA, or any tournament organizer. It is not an official video game or
-official tournament product.
+Built for the TxODDS **Consumer & Fan Experiences** hackathon track.
 
-## License
+## What It Does
 
-MIT. See `LICENSE`.
+| | |
+|---|---|
+| **Swipe** | 10–12 auto-generated cards per match: winner, goals, cards, corners, last-10-match benchmarks |
+| **Lock** | Every pick freezes into an on-chain commitment per fixture at kickoff−30min. No edits, provable |
+| **Watch** | Cards react to live TxLINE match events over SSE |
+| **Settle** | An on-chain program records one immutable result per question; scoring is exactly-once |
+| **Compete** | Humans and a cohort of ten AI players (distinct personas, own wallets) on one leaderboard |
+| **Replay** | Finished World Cup fixtures re-run on demand so the board never goes quiet |
 
-## Architecture
+## Why This Exists
 
-One TypeScript package, ESM, Node 22, pnpm. Hono runs the REST API and SSE live
-stream. The default local `full` runtime mode also runs TxLINE ingestion and
-three background loops. On Railway the server stays in `web` mode while a
-bounded cron runner owns ingestion and lifecycle work only around matches.
-Chain access goes through one shared adapter (in-memory stub by default,
-`CHAIN_MODE=solana` for the real thing).
+- **Fan games go dead between matches** → finished fixtures replay under fresh
+  ids with full decks, so there is always something to call.
+- **Prediction games ask for blind trust** → picks hash into per-fixture
+  on-chain commitments; anyone can recompute and verify nothing changed
+  after kickoff.
+- **Crypto onboarding kills casual fans** → passwordless email OTP (Privy),
+  embedded Solana wallet auto-created, fees sponsored. No extension, no seed
+  phrase, no SOL required.
+- **Empty leaderboards are boring** → ten AI players with real wallets and
+  distinct strategies grind every question through the same pipeline humans
+  use, labeled AI everywhere.
 
-Data flow: TxLINE events → `src/txline` (sequence-guarded apply into
-`fixtures` + local bus + validated Postgres notification) → the scheduler and
-SSE `/api/live` route → settlement. Durable scheduler catch-up recovers missed
-bus events from fixture state. The web process holds its dedicated Postgres
-LISTEN connection only while at least one SSE client is connected.
+## Current Status
 
-```
-src/web         Vite + React + vite-plugin-pwa client
-src/api         Hono server, routes, auth adapters (dev stub / Privy)
-src/db          Drizzle schema, migrations, Postgres client
-src/txline      TxLINE ingestion: replay + live clients, event apply, bus
-src/questions   Question templates, generation, scheduler, settlement
-src/predictions Prediction reconciler (retry/repair pending chain submits)
-src/chain       Chain adapter interface, in-memory stub, Solana adapter
-src/runner      Bounded, advisory-locked automatic match processor
-program/        Anchor program source (Rust)
-```
+| Piece | Status |
+|---|---|
+| PWA client (React 19 + Vite), landing page | live |
+| Privy email OTP auth + embedded Solana wallets | live in production |
+| TxLINE live ingestion, filtered to World Cup (`competitionId=72`) | live |
+| Question generation (12 templates, stage-scaled budgets) | live |
+| Per-fixture batch commitments (SPL Memo v2, commit at lock) | live |
+| `cuprush` Anchor program (question + settlement records) | deployed on devnet, authority-hardened |
+| On-chain settlement + exactly-once scoring | live (real transactions on devnet) |
+| AI player cohort (10 agents via Hermes + MCP endpoint) | live |
+| Knockout replay engine (TxLINE-sourced) | live |
 
-Vite dev server proxies `/api` to the Hono server. Whenever `dist/client`
-exists (after `pnpm build`), the Hono server also serves the built client.
+## Quick Start
 
-### TxLINE endpoints
-
-Replay mode (default) streams the captured JSON files in
-`src/txline/fixtures/samples`. Live mode (`TXLINE_MODE=live`) talks to the
-real TxLINE API at `TXLINE_BASE_URL` (the origin, no `/api` suffix): it
-mints a guest JWT via `POST /auth/guest/start`, then — sending
-`Authorization: Bearer <jwt>` plus `X-Api-Token: <TXLINE_API_KEY>` on every
-data call — fetches `GET /api/fixtures/snapshot` for the fixture list,
-`GET /api/scores/snapshot/{fixtureId}` for each fixture's event history,
-and follows `GET /api/scores/stream` (SSE) for live events. A 401 re-mints
-the JWT once and retries. Idle cron discovery fetches only the fixture list;
-per-fixture score fan-out and the stream start only when work is active. A
-dropped stream uses bounded reconnects with fresh snapshots before a terminal
-failure restarts the Railway job. The exact wire shape is isolated in
-`src/txline/schema.ts` + `src/txline/live-client.ts`; everything downstream
-sees validated `TxLineEvent` objects only.
-
-## Setup
-
-Requires Node 22, pnpm, and a local Postgres 18 (no Docker; this repo targets
-the default Homebrew socket).
+Requires Node 22, pnpm, local Postgres 18 (Homebrew socket by default).
 
 ```sh
 pnpm install
 createdb worldcup_hilo
-cp .env.example .env   # adjust DATABASE_URL if your Postgres setup differs
+cp .env.example .env   # adjust DATABASE_URL if needed; set AUTH_MODE=dev
 pnpm db:migrate
-pnpm seed:demo   # optional: one open winner + inter-fixture card to swipe
-pnpm dev
+pnpm seed:demo         # ten finished fixtures + three upcoming decks to swipe
+pnpm dev               # client http://localhost:5173, API :3000
 ```
 
-The app runs at http://localhost:5173 (Vite) with the API on
-http://localhost:3000 (see `PORT` in `.env`).
+Landing page at `/landing.html`, app at `/`. Without the seed (or live
+TxLINE data) the deck shows the empty state.
 
-Without `pnpm seed:demo` (or live TxLINE data) the deck shows the "no open
-questions" empty state. The seed inserts a finished benchmark fixture and one
-fixture kicking off in ~2 hours, leaving a winner card and an inter-fixture
-corner card open to answer immediately. It is idempotent and local-only.
+## Architecture
 
-## Environment
+```mermaid
+flowchart LR
+  subgraph feed [TxLINE devnet feed]
+    TX[fixtures + live score events]
+  end
+  subgraph app [Hono API + background loops]
+    ING[ingestion\ncompetition-filtered] --> DB[(Postgres)]
+    DB --> GEN[question generation\n12 templates]
+    GEN --> API[REST + SSE + cohort MCP]
+    SCHED[scheduler + replay finisher] --> SET[settlement]
+  end
+  subgraph chain [Solana devnet]
+    PROG[cuprush program\nQuestion PDAs + results]
+    MEMO[SPL Memo\nper-fixture batch hashes]
+  end
+  TX --> ING
+  API --> WEB[PWA client]
+  API --> HERMES[Hermes AI cohort\n10 players]
+  SET --> PROG
+  SCHED --> MEMO
+```
 
-See `.env.example` for inline docs. Local development needs `DATABASE_URL`
-and an explicit `AUTH_MODE=dev`; the remaining variables are optional.
+One TypeScript package, ESM. Hono serves REST + SSE; `full` runtime mode also
+runs ingestion and three background loops locally. On Railway the web app
+stays in `web` mode while a bounded, advisory-locked cron runner owns
+ingestion, lifecycle, reconciliation, and settlement around matches. Chain
+access goes through one adapter (in-memory stub by default, `CHAIN_MODE=solana`
+for devnet).
 
-| Variable | Default | Purpose |
-|---|---|---|
-| `DATABASE_URL` | — (required) | Postgres connection string |
-| `PORT` | `3000` | Hono server port |
-| `APP_RUNTIME_MODE` | `full` | `full` runs HTTP plus background work; `web` runs HTTP only |
-| `AUTH_MODE` | `privy` | `privy` verification (fail-closed default) or explicit `dev` stub |
-| `TXLINE_MODE` | `replay` | `replay` captured fixtures or `live` stream |
-| `TXLINE_BASE_URL` / `TXLINE_API_KEY` | — | TxLINE origin (no `/api` suffix) + X-Api-Token key (live mode only; guest JWT self-minted) |
-| `TXLINE_REPLAY_INTERVAL_MS` | `1500` | ms between replayed events (0 = all at once) |
-| `TXLINE_FIXTURES_DIR` | `src/txline/fixtures/samples` | Alternate replay fixtures directory |
-| `PRIVY_APP_ID` / `PRIVY_APP_SECRET` | — | Privy credentials (`AUTH_MODE=privy` only) |
-| `CHAIN_MODE` | stub | `solana` selects the real chain adapter |
-| `SOLANA_RPC_URL` / `CUPRUSH_PROGRAM_ID` | — | Solana adapter config (`CHAIN_MODE=solana` only) |
-| `MATCH_RUNNER_CHAIN_WRITES` | `disabled` | `enabled` permits runner chain writes only with `CHAIN_MODE=solana` |
-| `LLM_SELECTOR` / `OPENROUTER_API_KEY` / `OPENROUTER_MODEL` | off | Optional LLM question selector (background only) |
+Data flow: TxLINE events → `src/txline` (sequence-guarded apply into
+`fixtures` + validated Postgres notifications) → scheduler + SSE `/api/live` →
+settlement. Durable catch-up recovers missed transitions from fixture state.
 
-## Scripts
+**On-chain model** (program `9u7uuj7S8kMon564b4TA8Gc7RaYXSC5QgjDz8fFgmGCU`):
+one immutable `Question` PDA per canonical rule hash (creation allowlisted to
+the server authority, injected at build time), settlement gated to
+`status == Open` and `now >= locks_at`, exactly once. Player picks hash into
+one SPL-Memo commitment per (wallet, fixture), frozen at kickoff−30min so
+every accepted pick is inside a verifiable hash.
+
+**AI cohort**: ten seeded personas with Privy server wallets. An external
+Hermes instance decides; the backend owns attribution (agent_key → participant
+→ wallet), validates every decision (outcomes, confidence, 2-minute lock
+margin), and rejects forged identities. Agents ride the same submission,
+settlement, and scoring paths as humans — MCP endpoint at `/api/cohort/mcp`.
+
+## Tech Stack
+
+| Layer | Choice |
+|---|---|
+| Client | React 19, Vite, vite-plugin-pwa, Tailwind |
+| API | Hono (REST + SSE), Zod at every trust boundary |
+| Data | Postgres 18, Drizzle ORM |
+| Auth | Privy (email OTP, embedded + server wallets), fail-closed adapter |
+| Chain | Anchor 1.1.2 program on Solana devnet, SPL Memo commitments |
+| Feed | TxLINE devnet API (snapshots + SSE), competition-filtered |
+| AI players | Hermes agent gateway (self-hosted) → MCP tools, model-agnostic |
+| Tests | Vitest: 397 unit · 212 integration · 56 web component |
+
+## Repository Map
+
+```
+src/web         PWA client + landing page
+src/api         Hono server, routes, auth adapters, cohort MCP endpoint
+src/db          Drizzle schema, migrations, seeds (demo, agents, replays)
+src/txline      TxLINE ingestion: replay + live clients, competition filter
+src/questions   Templates, generation, benchmarks, scheduler, settlement
+src/predictions Batch hashing + reconciler (retry/repair chain submits)
+src/agents      AI cohort provisioning (Privy server wallets, cohort token)
+src/chain       Chain adapter: stub + Solana (memo v2, PDA derivation)
+src/runner      Bounded, advisory-locked cron match processor
+program/        `cuprush` Anchor program (Rust)
+plans/          Local planning docs (gitignored)
+```
+
+## Development Commands
 
 | Script | Purpose |
 |---|---|
-| `pnpm dev` | Run Vite client + Hono API together (watch mode) |
-| `pnpm build` | Build the production client bundle into `dist/client` |
-| `pnpm start` | Run the production server (serves built client + API) |
-| `pnpm match-runner` | Run one bounded automatic match-processing invocation |
-| `pnpm test` | Run unit tests (`*.test.ts`) |
-| `pnpm test:integration` | Run integration tests (`*.int.test.ts`) against Postgres |
-| `pnpm lint` | ESLint |
-| `pnpm typecheck` | `tsc --noEmit` |
-| `pnpm db:generate` | Generate Drizzle migrations from `src/db/schema.ts` |
-| `pnpm db:migrate` | Apply migrations to `DATABASE_URL` |
-| `pnpm seed:demo` | Insert local demo fixtures + open cards (idempotent) |
+| `pnpm dev` | Vite client + Hono API, watch mode |
+| `pnpm build` / `pnpm start` | Production bundle / serve it |
+| `pnpm test` / `test:integration` | Unit / integration (needs Postgres) |
+| `pnpm typecheck` / `lint` | tsc / ESLint |
+| `pnpm db:generate` / `db:migrate` | Drizzle migrations |
+| `pnpm seed:demo` | Local demo fixtures + open decks (idempotent) |
+| `pnpm seed:agents` / `provision:agents` | AI cohort identities / wallets + token (HITL) |
+| `pnpm seed:replays` | Insert replay fixtures from TxLINE source ids |
+| `pnpm cleanup:fixtures` | One-time purge of non-allowlisted fixtures (dry-run default) |
+| `pnpm match-runner` | One bounded match-processing invocation |
+
+## Environment
+
+See `.env.example` for inline docs on every variable. The short version:
+`DATABASE_URL` + `AUTH_MODE=dev` is enough locally; production adds Privy
+credentials, TxLINE live credentials + `TXLINE_COMPETITION_ID=72`,
+`CHAIN_MODE=solana` with the authority key, and the replay/runner knobs.
+
+## Roadmap
+
+- Player-signed prediction commitments with on-chain lock-window enforcement
+  (the deployed `submit_prediction` instruction — currently server-attested
+  memo commitments)
+- Oracle-verified settlement instead of trusted-authority results
+- Role separation: settlement authority ≠ fee payer ≠ upgrade authority
+- Publish the Anchor IDL on-chain so explorers decode instructions
+- Server-side `startEpochDay` windowing in the live ingest client
+
+## Limitations
+
+- Devnet only, points only: no wagers, no prizes, no real value.
+- Settlement trusts the server authority; the program enforces who/when, not
+  result correctness against an oracle (see Roadmap).
+- The TxLINE devnet feed simulates its own 2026 tournament; fixtures are the
+  feed's universe, not real-world results.
+- Single app replica (in-memory SSE bus); horizontal scaling needs a shared bus.
+- AI player picks are attested by the server, not signed by agent wallets.
 
 ## Testing
 
-Vitest is split into three projects:
-
-- **unit** — `*.test.ts` outside `src/web`, no external dependencies.
-- **web** — `src/web/**/*.test.{ts,tsx}` component tests under jsdom
-  (`pnpm exec vitest run --project web`).
-- **integration** — `*.int.test.ts`, requires Postgres at `DATABASE_URL`.
-  The global setup drops and recreates a dedicated `worldcup_hilo_test`
-  database and migrates it once per run. All integration files share that
-  database, so they run serially (`fileParallelism: false`) and every test
-  scopes its assertions to its own randomly-suffixed fixture IDs.
-
-## Smoke test
-
-End-to-end pass against a production-ish server (built client, dev auth
-stub, replay TxLINE, stub chain). Takes ~8 minutes of wall time — the
-scheduler ticks once a minute and the replayed match plays out in real time.
-
-```sh
-pnpm build
-createdb worldcup_hilo 2>/dev/null; pnpm db:migrate
-
-# 1. Generate a replay fixture kicking off 32.5 minutes from now:
-#    questions open immediately, lock in ~2.5 min, the match goes live and
-#    finishes over the following minutes.
-mkdir -p /tmp/smoke-fixtures
-node -e '
-const kickoff = Date.now() + 32.5 * 60_000;
-const t = (m) => Date.now() + m * 60_000;
-const score = (hg, hc, ag, ac) => ({
-  Participant1: { Total: { Goals: hg, Corners: hc } },
-  Participant2: { Total: { Goals: ag, Corners: ac } },
-});
-const id = Date.now();
-const event = (Seq, Action, m, ...s) =>
-  ({ FixtureId: id, Seq, Ts: t(m), Action, Participant1IsHome: true, Score: score(...s) });
-require("fs").writeFileSync("/tmp/smoke-fixtures/smoke.json", JSON.stringify({
-  snapshot: { FixtureId: id, StartTime: kickoff, Participant1: "Smoke FC",
-    Participant2: "Test United", Participant1IsHome: true },
-  events: [
-    event(1, "goal", 2, 1, 1, 0, 0),
-    event(2, "corner", 4, 1, 2, 0, 1),
-    event(3, "game_finalised", 6, 1, 3, 0, 2),
-  ],
-}, null, 2));'
-
-# 2. Start the server (dev auth mode refuses NODE_ENV=production; the built
-#    client is served whenever dist/client exists).
-TXLINE_FIXTURES_DIR=/tmp/smoke-fixtures TXLINE_REPLAY_INTERVAL_MS=120000 \
-  pnpm exec tsx --env-file=.env src/api/server.ts
-
-# 3. In another shell — create a dev user, set its wallet:
-curl -s localhost:3000/api/me -H "Authorization: Bearer dev:smoke"
-curl -s -X POST localhost:3000/api/wallet -H "Authorization: Bearer dev:smoke" \
-  -H "content-type: application/json" \
-  -d '{"address":"7VfCXTUXx5WJV5JADk17DUJ4ksgau7utNKj4b963voxs"}'
-
-# 4. Once the next scheduler tick generates questions (<= 60s), pick the
-#    open "winner" question and predict home win ("yes"):
-curl -s localhost:3000/api/questions
-QID=<id of the open winner question>
-curl -s -X POST localhost:3000/api/predictions -H "Authorization: Bearer dev:smoke" \
-  -H "content-type: application/json" -d "{\"questionId\":\"$QID\",\"outcome\":\"yes\"}"
-# expect: {"chainStatus":"confirmed", ...}
-
-# 5. Wait for the replay to finish the match (~6 min after boot), then:
-curl -s localhost:3000/api/questions      # winner question "status":"settled","result":"yes"
-curl -s localhost:3000/api/me -H "Authorization: Bearer dev:smoke"   # points: 1, currentStreak: 1
-curl -s localhost:3000/api/leaderboard    # the dev user on top with 1 point
-```
-
-## Auth
-
-`AUTH_MODE` selects the auth adapter (`src/api/auth`):
-
-- `privy` (default) — verifies real Privy access tokens via
-  `@privy-io/server-auth`; requires `PRIVY_APP_ID` and `PRIVY_APP_SECRET`
-  and throws at boot without them, so a deploy that forgets `AUTH_MODE`
-  fails closed instead of running unauthenticated.
-- `dev` — explicit opt-in local stub. Any `Authorization: Bearer dev:<id>`
-  header authenticates as the fake Privy user `<id>`. Logs a loud warning
-  on start and refuses to run under any prod-ish `NODE_ENV`
-  (production/prod/staging, case-insensitive).
-
-The first authenticated request provisions a `participants` row
-(kind=human) plus a `users` row mapping the Privy user id, in one
-transaction. No OTPs, emails, or raw tokens are stored.
-
-Semantics worth knowing:
-
-- `POST /api/logout` returns 204 and stores nothing — the backend is
-  stateless, so logout means the client clearing its Privy session.
-- `POST /api/wallet/delegation/revoke` records the revocation in
-  `participants.delegation_revoked_at`; the Privy-side revocation itself is
-  HITL until Privy credentials land.
-- `DELETE /api/me` anonymizes: deletes the `users` row and clears the
-  display name, but keeps the participant, wallet link, and predictions.
-  On-chain data cannot be erased — the client must disclose this first.
+Vitest, three projects: **unit** (`*.test.ts`), **web** (jsdom component
+tests), **integration** (`*.int.test.ts`, drops/recreates a dedicated
+`worldcup_hilo_test` database; files run serially against it). An end-to-end
+smoke recipe (replayed match through prediction, settlement, and scoring on a
+production-ish server) lives in `docs/` history — the integration suite now
+covers the same path automatically, including the cohort full-tick and
+per-fixture commitment proofs.
 
 ## Deploy (Railway)
 
-Three services: the serverless **app**, the cron **match-runner**, and Railway
-**Postgres**.
-`railway.json` carries the config-as-code: Railpack build
-(`pnpm install --frozen-lockfile && pnpm build`), migrations as the
-pre-deploy command (`pnpm exec tsx src/db/migrate.ts`), start command
-`pnpm exec tsx src/api/server.ts`, healthcheck at `/api/health`, restart
-on failure. Keep a single replica — the SSE bus is in-memory, so the app
-cannot scale horizontally.
+Three services: serverless **app** (`web` runtime), cron **match-runner**
+(every 5 min, advisory-locked, bounded), **Postgres**. `railway.json` /
+`railway.runner.json` carry config-as-code: Railpack build, migrations as
+pre-deploy, `/api/health` healthcheck. Keep one app replica.
 
-Environment variables per environment:
+Per-service env matrix lives in `.env.example`; the essentials:
 
-| Variable | Demo env | Production app | Production match-runner |
-|---|---|---|---|
-| `DATABASE_URL` | reference variable `${{Postgres.DATABASE_URL}}` | same | same |
-| `APP_RUNTIME_MODE` | `full` | `web` | unused |
-| `AUTH_MODE` | `dev` | `privy` | unused |
-| `NODE_ENV` | `development` — the dev auth stub refuses prod-ish values | `production` | `production` |
-| `TXLINE_MODE` | `replay` (bundled fixtures, zero creds) | unused | `live` + TxLINE creds |
-| `PRIVY_APP_ID` / `PRIVY_APP_SECRET` | unset | required | unused |
-| `MATCH_RUNNER_CHAIN_WRITES` | `disabled` | unused | `disabled` until Solana review |
-| `PORT` | Railway-injected | same | same |
+| Variable | app (production) | match-runner (production) |
+|---|---|---|
+| `APP_RUNTIME_MODE` | `web` | unused (own entrypoint) |
+| `AUTH_MODE` + Privy creds | `privy` (fail-closed) | unused |
+| `TXLINE_MODE` + creds | unused | `live` |
+| `TXLINE_COMPETITION_ID` | `72` | `72` |
+| `CHAIN_MODE` / `MATCH_RUNNER_CHAIN_WRITES` | unused | `solana` / `enabled` |
+| `SOLANA_PRIVATE_KEY` / `CUPRUSH_PROGRAM_ID` | unused | authority key / program id |
 
-Keep the Railway app permanently on `APP_RUNTIME_MODE=web`. Railway invokes the
-`match-runner` service every five minutes. A fixed session advisory lock
-prevents overlap; after initial TxLINE synchronization it exits after two idle
-checks, stays for fixtures starting within 40 minutes or active lifecycle work,
-and hands off after six hours. No runtime variable toggle or redeploy is needed
-for a match. The runner uses `railway.runner.json`; the app continues using
-`railway.json` with Serverless enabled.
+Auth fails closed: an unset `AUTH_MODE` selects the Privy adapter, which
+refuses to boot without credentials — a misconfigured deploy crashes instead
+of accepting stub tokens.
 
-Runner chain writes are fail-closed. Keep
-`MATCH_RUNNER_CHAIN_WRITES=disabled` on Railway: ingestion and lifecycle
-transitions continue, but prediction reconciliation and settlement are skipped
-and settling-only questions do not keep the job awake. Enabling writes requires
-the explicit value `enabled` together with `CHAIN_MODE=solana`; the runner
-never falls back to the process-local stub.
+## Contributing
 
-The current production environment still needs reviewed `TXLINE_MODE=live`
-and TxLINE credentials before real matches. Real settlement additionally needs
-a separate Solana configuration review. Replay mode only validates the runner
-lifecycle against bundled samples.
+Issues and PRs welcome: template hardening (new question types), replay
+tooling, the roadmap items above. Never commit credentials; `.env` and
+`plans/` are gitignored on purpose.
 
-For staging tests, start Postgres first, deploy the app with
-`APP_RUNTIME_MODE=full`, and run the test. Stop the app before Postgres when
-finished. For HTTP-only testing, use `web`; Postgres may remain stopped until a
-request needs database access.
+## Disclaimer
 
-Auth fails closed: leaving `AUTH_MODE` unset selects the Privy adapter,
-which refuses to boot without `PRIVY_APP_ID`/`PRIVY_APP_SECRET`. A deploy
-that forgets `AUTH_MODE` crashes instead of silently accepting stub
-tokens — set `AUTH_MODE=dev` explicitly on the demo environment.
+CupRush 26 is an independent hackathon proof of concept. It is not
+affiliated with, endorsed by, sponsored by, or officially connected to the
+FIFA World Cup 26, FIFA, or any tournament organizer. It is not an official
+video game or official tournament product. All match data comes from the
+TxLINE devnet feed's simulated tournament.
+
+## License
+
+MIT. See `LICENSE`.
