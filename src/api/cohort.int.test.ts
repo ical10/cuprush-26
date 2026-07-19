@@ -302,6 +302,24 @@ describe("POST /api/cohort/pending", () => {
     expect(ids).toContain(farLock.id);
   });
 
+  it("caps open questions per player at the pending limit, soonest lock first", async () => {
+    const { cohort, token } = await createCohort();
+    const { agentKey } = await createAgent(cohort.id);
+    const soonest = await insertQuestion({
+      locksAt: new Date(Date.now() + 10 * 60_000),
+    });
+    for (let k = 0; k < 21; k++) {
+      await insertQuestion({ locksAt: new Date(Date.now() + (30 + k) * 60_000) });
+    }
+
+    const res = await pending(token);
+    const body: { players: { agent_key: string; open_questions: { id: string }[] }[] } =
+      await res.json();
+    const player = body.players.find((p) => p.agent_key === agentKey)!;
+    expect(player.open_questions.length).toBe(20);
+    expect(player.open_questions[0]!.id).toBe(soonest.id);
+  });
+
   it("excludes paused agents from the player list", async () => {
     const { cohort, token } = await createCohort();
     const active = await createAgent(cohort.id, { status: "active" });
