@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "react";
+import { AnimatePresence } from "framer-motion";
 import { MoveLeft, MoveRight } from "lucide-react";
 import { fetchMyPredictions, fetchQuestions, submitPredictionBatch } from "../lib/api";
 import { useAuth } from "../auth/auth-context";
+import { usePrefersReducedMotion } from "../hooks/use-reduced-motion";
 import { Button } from "@/components/ui/button";
 import type { BatchAnswer, Question } from "../lib/types";
 import { QuestionCard } from "./question-card";
@@ -17,6 +19,12 @@ type Props = {
 };
 
 type SubmitState = "idle" | "submitting" | "done" | "failed";
+
+// A committed answer's exit: which card left and which way it flew. Drives
+// the removed card's exit variant (via AnimatePresence custom) and the
+// stage-fixed commit streak. Direction mirrors outcomeFromDrag: outcomes[0]
+// commits right, outcomes[1] commits left — for swipes and rail buttons alike.
+type ExitCommit = { questionId: string; direction: 1 | -1 };
 
 /* Night-stadium photo behind the deck only (brand toolkit phone mock). A
    fixed layer under the shell content; the CSS scrim keeps header, nav, and
@@ -50,8 +58,10 @@ export function CardDeck(props: Props) {
 
 function Deck({ onNavigateAuth, initialAnswer, onInitialAnswerConsumed }: Props) {
   const { isAuthenticated } = useAuth();
+  const reducedMotion = usePrefersReducedMotion();
   const [questions, setQuestions] = useState<Question[] | null>(null);
   const [index, setIndex] = useState(0);
+  const [lastCommit, setLastCommit] = useState<ExitCommit | null>(null);
   // Answers accumulate locally per swipe — nothing hits the network until the
   // whole deck is submitted as one batch. A refresh before submit discards
   // them (accepted tradeoff); a submitted batch is durable.
@@ -89,6 +99,10 @@ function Deck({ onNavigateAuth, initialAnswer, onInitialAnswerConsumed }: Props)
     onInitialAnswerConsumed?.();
     const pending = questions.find((q) => q.id === initialAnswer.questionId);
     if (!pending) return;
+    setLastCommit({
+      questionId: pending.id,
+      direction: initialAnswer.outcome === pending.outcomes[0] ? 1 : -1,
+    });
     setAnswers((prev) => [...prev, { questionId: pending.id, outcome: initialAnswer.outcome }]);
     setIndex((i) => i + 1);
   }, [questions, initialAnswer, isAuthenticated, onInitialAnswerConsumed]);
@@ -96,6 +110,10 @@ function Deck({ onNavigateAuth, initialAnswer, onInitialAnswerConsumed }: Props)
   const current = questions?.[index] ?? null;
 
   function record(question: Question, outcome: string) {
+    setLastCommit({
+      questionId: question.id,
+      direction: outcome === question.outcomes[0] ? 1 : -1,
+    });
     setAnswers((prev) => [...prev, { questionId: question.id, outcome }]);
     setIndex((i) => i + 1);
   }
@@ -199,7 +217,35 @@ function Deck({ onNavigateAuth, initialAnswer, onInitialAnswerConsumed }: Props)
                 aria-hidden="true"
               />
             ))}
-          <QuestionCard question={current} onAnswer={handleAnswer} disabled={deckDisabled} />
+          {/*
+            One card instance per question: the key remount means every card
+            mounts centered at x=0 with fresh motion values, instead of the
+            next question inheriting the previous swipe's drag offset and
+            in-flight exit. AnimatePresence keeps the swiped card alive so
+            its exit (direction via custom) actually plays while the next
+            card is already presented centered (DESIGN.md § 05 Swipe deck).
+          */}
+          <AnimatePresence initial={false} custom={lastCommit?.direction ?? 1}>
+            <QuestionCard
+              key={current.id}
+              question={current}
+              onAnswer={handleAnswer}
+              disabled={deckDisabled}
+            />
+          </AnimatePresence>
+          {/*
+            Commit streak: one short accent flash on the chosen side, fixed
+            to the stage so it never travels with the exiting card. Keyed per
+            committed question so each commit restarts the CSS animation; it
+            self-finishes at opacity 0 (forwards).
+          */}
+          {lastCommit && !reducedMotion && (
+            <span
+              key={lastCommit.questionId}
+              className={`card-streak ${lastCommit.direction > 0 ? "card-streak-right" : "card-streak-left"}`}
+              aria-hidden="true"
+            />
+          )}
         </div>
 
         {/*

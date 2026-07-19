@@ -1,4 +1,5 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act } from "react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { CardDeck } from "./card-deck";
@@ -52,6 +53,27 @@ function renderDeck() {
       <CardDeck onNavigateAuth={() => {}} />
     </AuthProvider>,
   );
+}
+
+// framer-motion recognizes drags and runs exit animations inside its own
+// rAF-batched frame scheduler — frames must actually tick for a release to
+// register or an exiting card to leave the DOM (see question-card.test.tsx).
+const nextFrame = () =>
+  act(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
+
+async function swipe(card: HTMLElement, dx: number) {
+  const opts = { pointerId: 1, isPrimary: true, pointerType: "mouse" as const };
+  fireEvent.pointerDown(card, { ...opts, clientX: 0, clientY: 0, buttons: 1 });
+  fireEvent.pointerMove(window, { ...opts, clientX: dx, clientY: 0, buttons: 1 });
+  await nextFrame();
+  fireEvent.pointerUp(window, { ...opts, clientX: dx, clientY: 0, buttons: 0 });
+  await nextFrame();
+}
+
+// Ticks frames until the committed card's exit animation finishes and
+// AnimatePresence removes it (bounded so a regression fails, not hangs).
+async function exitToFinish(text: string) {
+  for (let i = 0; i < 200 && screen.queryByText(text); i++) await nextFrame();
 }
 
 describe("CardDeck batching", () => {
@@ -139,6 +161,31 @@ describe("CardDeck batching", () => {
     expect(within(card).queryByRole("button")).not.toBeInTheDocument();
   });
 
+  // Regression: the card component used to be reused across questions (no
+  // key), so the next card inherited the previous swipe's drag offset and
+  // in-flight exit animation — it slid in from wherever the last card left
+  // (or kept tracking the cursor) instead of snapping to center.
+  it("mounts the next card centered after a swipe instead of inheriting the drag offset", async () => {
+    fetchQuestions.mockResolvedValue([question("q1"), question("q2")]);
+    renderDeck();
+
+    const firstCard = (await screen.findByText("Q q1?")).closest(
+      "[data-testid=question-card]",
+    ) as HTMLElement;
+    await swipe(firstCard, 150);
+
+    // A fresh instance per question: a new element with no leftover offset.
+    const nextCard = (await screen.findByText("Q q2?")).closest(
+      "[data-testid=question-card]",
+    ) as HTMLElement;
+    expect(nextCard).not.toBe(firstCard);
+    expect(nextCard.getAttribute("style") ?? "").not.toMatch(/translateX\((?!0px\))/);
+
+    // The swiped card flies out and leaves the DOM instead of morphing into q2.
+    await exitToFinish("Q q1?");
+    expect(screen.queryByText("Q q1?")).not.toBeInTheDocument();
+  });
+
   it("hands the pending answer to the shell when a guest signs in to save", async () => {
     fetchQuestions.mockResolvedValue([question("q1"), question("q2")]);
     const onNavigateAuth = vi.fn();
@@ -176,8 +223,10 @@ describe("CardDeck batching", () => {
       </AuthProvider>,
     );
 
-    // q1 is recorded silently and skipped: the deck opens on q2.
+    // q1 is recorded silently and skipped: the deck opens on q2. The replayed
+    // card plays its exit first, then leaves the DOM for good.
     await screen.findByText("Q q2?");
+    await exitToFinish("Q q1?");
     expect(screen.queryByText("Q q1?")).not.toBeInTheDocument();
     expect(onConsumed).toHaveBeenCalledTimes(1);
     expect(submitPredictionBatch).not.toHaveBeenCalled();
