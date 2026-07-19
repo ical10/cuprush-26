@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import type { Database } from "../db/client";
 import { fixtures } from "../db/schema";
 import { applyTxLineEvent, toFixtureUpdate } from "./apply";
+import { isFixtureAllowed, parseTeamAllowlist } from "./allowlist";
 import { publishFixtureUpdate, type FixtureUpdatePublisher } from "./bus";
 import { txLineReplayFileSchema, type TxLineReplayFile } from "./schema";
 import type { TxLineClient } from "./client";
@@ -15,6 +16,8 @@ export type ReplayClientOptions = {
   db: Database;
   /** Directory of captured JSON event files. Defaults to fixtures/samples. */
   fixturesDir?: string;
+  /** Env source for TXLINE_TEAM_ALLOWLIST. Defaults to allow-all when omitted. */
+  env?: NodeJS.ProcessEnv;
   /**
    * Delay between events in ms. 0 (default) applies every event immediately
    * ("on-demand" — used by tests). A positive value spaces events out on a
@@ -55,6 +58,7 @@ async function seedSnapshot(db: Database, snapshot: TxLineReplayFile["snapshot"]
 export function createReplayTxLineClient(options: ReplayClientOptions): TxLineClient {
   const fixturesDir = options.fixturesDir ?? DEFAULT_FIXTURES_DIR;
   const intervalMs = options.intervalMs ?? 0;
+  const allowlist = parseTeamAllowlist(options.env?.TXLINE_TEAM_ALLOWLIST);
   const publishUpdate = options.publishUpdate ?? publishFixtureUpdate;
   const timers: NodeJS.Timeout[] = [];
   let stopped = false;
@@ -75,7 +79,20 @@ export function createReplayTxLineClient(options: ReplayClientOptions): TxLineCl
     async prepare(signal) {
       stopped = false;
       signal?.throwIfAborted();
-      files = await loadReplayFixtures(fixturesDir);
+      const loaded = await loadReplayFixtures(fixturesDir);
+      files = loaded.filter((file) => {
+        const allowed = isFixtureAllowed(
+          allowlist,
+          file.snapshot.homeTeam,
+          file.snapshot.awayTeam,
+        );
+        if (!allowed) {
+          console.warn(
+            `TxLINE fixture ${file.snapshot.fixtureId} skipped: ${file.snapshot.homeTeam} vs ${file.snapshot.awayTeam} not in TXLINE_TEAM_ALLOWLIST`,
+          );
+        }
+        return allowed;
+      });
 
       for (const file of files) {
         signal?.throwIfAborted();

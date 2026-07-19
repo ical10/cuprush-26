@@ -2,6 +2,7 @@ import { z } from "zod";
 import type { Database } from "../db/client";
 import { fixtures } from "../db/schema";
 import { applyTxLineEvent, toFixtureUpdate } from "./apply";
+import { isFixtureAllowed, parseTeamAllowlist } from "./allowlist";
 import { publishFixtureUpdate, type FixtureUpdatePublisher } from "./bus";
 import {
   parseScoreSnapshot,
@@ -231,6 +232,7 @@ function sleepWithSignal(milliseconds: number, signal: AbortSignal): Promise<voi
 
 export function createLiveTxLineClient(options: LiveClientOptions): TxLineClient {
   const config = readLiveConfig(options.env);
+  const allowlist = parseTeamAllowlist(options.env.TXLINE_TEAM_ALLOWLIST);
   const authorizedFetch = createAuthorizedFetch(config, options.fetchImpl ?? fetch);
   const publishUpdate = options.publishUpdate ?? publishFixtureUpdate;
   const reconnectDelaysMs = options.reconnectDelaysMs ?? DEFAULT_RECONNECT_DELAYS_MS;
@@ -263,7 +265,14 @@ export function createLiveTxLineClient(options: LiveClientOptions): TxLineClient
     const raw = await fetchJson("/api/fixtures/snapshot", signal);
     const snapshots = txLineFixtureListSchema.parse(raw);
 
+    const allowed: TxLineFixtureSnapshot[] = [];
     for (const snapshot of snapshots) {
+      if (!isFixtureAllowed(allowlist, snapshot.homeTeam, snapshot.awayTeam)) {
+        console.warn(
+          `TxLINE fixture ${snapshot.fixtureId} skipped: ${snapshot.homeTeam} vs ${snapshot.awayTeam} not in TXLINE_TEAM_ALLOWLIST`,
+        );
+        continue;
+      }
       await options.db
         .insert(fixtures)
         .values({
@@ -283,9 +292,10 @@ export function createLiveTxLineClient(options: LiveClientOptions): TxLineClient
             startsAt: new Date(snapshot.startsAt),
           },
         });
+      allowed.push(snapshot);
     }
-    preparedSnapshots = snapshots;
-    return snapshots;
+    preparedSnapshots = allowed;
+    return allowed;
   }
 
   async function seedScores(
