@@ -14,7 +14,11 @@ type Status = {
   text: string;
 };
 
-export function ProfileScreen() {
+type Props = {
+  onSignIn: () => void;
+};
+
+export function ProfileScreen({ onSignIn }: Props) {
   const { isAuthenticated, logout } = useAuth();
   const [me, setMe] = useState<Me | null>(null);
   const [name, setName] = useState("");
@@ -32,7 +36,14 @@ export function ProfileScreen() {
   }, [isAuthenticated]);
 
   if (!isAuthenticated) {
-    return <p className="empty-state">Sign in to view your profile.</p>;
+    return (
+      <div className="empty-state">
+        <p>Sign in to view your profile.</p>
+        <button type="button" className="btn btn-primary" onClick={onSignIn}>
+          Sign in
+        </button>
+      </div>
+    );
   }
   if (!me) return <p className="empty-state">Loading profile…</p>;
 

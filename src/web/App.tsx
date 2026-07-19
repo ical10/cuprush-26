@@ -37,14 +37,26 @@ function AppShell() {
   // unmounts CardDeck, so the answer has to survive on the shell and ride back
   // into the freshly mounted deck as a prop.
   const pendingAnswer = useRef<BatchAnswer | null>(null);
+  // Where to send the user back to after auth. Defaults to "deck" (the
+  // CardDeck guest-gate flow); set to "profile" when Profile's sign-in
+  // button triggers the navigation instead.
+  const authReturnTo = useRef<Screen>("deck");
 
   function goToAuth(pending: BatchAnswer) {
     pendingAnswer.current = pending;
+    authReturnTo.current = "deck";
+    navigate("auth");
+  }
+
+  function goToAuthFromProfile() {
+    authReturnTo.current = "profile";
     navigate("auth");
   }
 
   function handleAuthDone() {
-    navigate("deck");
+    const returnTo = authReturnTo.current;
+    authReturnTo.current = "deck";
+    navigate(returnTo);
   }
 
   return (
@@ -71,7 +83,7 @@ function AppShell() {
         {screen === "live" && <LiveScreen />}
         {screen === "result" && <ResultScreen />}
         {screen === "leaderboard" && <LeaderboardScreen />}
-        {screen === "profile" && <ProfileScreen />}
+        {screen === "profile" && <ProfileScreen onSignIn={goToAuthFromProfile} />}
         {screen === "auth" && <AuthScreen onDone={handleAuthDone} />}
       </main>
 
