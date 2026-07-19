@@ -250,6 +250,31 @@ body {
 }
 .demo-yes { color: var(--lime); }
 
+/* ---------- partners ---------- */
+.partners {
+  max-width: 72rem;
+  margin: 0 auto;
+  padding: 0 1.5rem 2.5rem;
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 0.6rem;
+  font-size: 0.8rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+.partners-label { color: var(--muted); font-weight: 600; }
+.partners-name {
+  font-family: "Barlow Condensed", sans-serif;
+  font-weight: 800;
+  font-style: italic;
+  font-size: 1.05rem;
+  letter-spacing: 0.06em;
+}
+.partners-solana { color: #9945ff; text-shadow: 0 0 18px rgba(153, 69, 255, 0.35); }
+.partners-txline { color: var(--cyan); text-shadow: 0 0 18px rgba(25, 245, 210, 0.25); }
+.partners-slash { color: var(--line); font-weight: 800; }
+
 /* ---------- strip ---------- */
 .strip {
   max-width: 72rem;
