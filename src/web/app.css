@@ -1064,6 +1064,25 @@ button {
   color: var(--text-dim);
 }
 
+/* On-chain proof links: quiet inline links, not buttons — but accent-colored
+   and underlined so they read clearly in a demo recording. */
+.result-explorer {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+}
+
+.explorer-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  color: var(--accent);
+  font-size: 0.875rem;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
 .result-next {
   margin: 0;
 }

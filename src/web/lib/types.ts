@@ -57,6 +57,10 @@ export type Question = {
   opensAt: string;
   locksAt: string;
   settledAt: string | null;
+  // Sent by GET /api/predictions only (absent from GET /api/questions):
+  // the question's on-chain account and the devnet tx that settled it.
+  questionPda?: string | null;
+  settlementSignature?: string | null;
   question: string;
   outcomes: readonly string[];
   rule: QuestionRule;

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { fetchMe, fetchMyPredictions } from "../lib/api";
 import { buildShareText } from "../lib/share-text";
-import { Flag } from "lucide-react";
+import { ExternalLink, Flag } from "lucide-react";
 import { StatusBadge } from "./status-badge";
 import { EmptyState } from "./empty-state";
 import type { Me, Prediction, Question } from "../lib/types";
@@ -9,6 +9,46 @@ import type { Me, Prediction, Question } from "../lib/types";
 type MyPrediction = Prediction & { question: Question; correct: boolean | null };
 
 const VOID_COPY = "Match cancelled — no points";
+
+// The game runs on Solana devnet, so every settlement link needs the cluster
+// param — without it the explorer looks the signature up on mainnet.
+function explorerTxUrl(signature: string): string {
+  return `https://explorer.solana.com/tx/${signature}?cluster=devnet`;
+}
+
+function ExplorerLink({ signature, label }: { signature: string; label: string }) {
+  return (
+    <a
+      className="explorer-link"
+      href={explorerTxUrl(signature)}
+      target="_blank"
+      rel="noopener noreferrer"
+    >
+      <ExternalLink size={13} strokeWidth={2} aria-hidden="true" />
+      {label}
+    </a>
+  );
+}
+
+/**
+ * Outbound proof links for a resolved pick: the settlement tx on the
+ * question, and the batch commitment memo tx when confirmed. Void questions
+ * never settle on chain, so they render nothing.
+ */
+function ExplorerLinks({ p, batch = false }: { p: MyPrediction; batch?: boolean }) {
+  if (p.question.status === "void") return null;
+  const settlement = p.question.settlementSignature;
+  const memo = batch ? p.signature : null;
+  if (!settlement && !memo) return null;
+  return (
+    <p className="result-explorer">
+      {settlement && (
+        <ExplorerLink signature={settlement} label="View on Solana Explorer" />
+      )}
+      {memo && <ExplorerLink signature={memo} label="Batch memo" />}
+    </p>
+  );
+}
 
 async function share(text: string) {
   if (navigator.share) {
@@ -121,6 +161,7 @@ export function ResultScreen() {
         {isVoid && <StatusBadge status="void" />}
         {isPush && <StatusBadge status="push" />}
         <p className="result-question">{latest.question.question}</p>
+        <ExplorerLinks p={latest} batch />
         <p className="result-stat tabular">
           Streak: {me?.currentStreak ?? 0} · Best: {me?.bestStreak ?? 0} · Points:{" "}
           {me?.points ?? 0}
@@ -148,6 +189,7 @@ export function ResultScreen() {
             <p className={`result-phrase ${phrase.tone}`}>{phrase.text}</p>
             {badge && <StatusBadge status={badge} />}
             <p className="result-question">{p.question.question}</p>
+            <ExplorerLinks p={p} />
           </article>
         );
       })}

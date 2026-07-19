@@ -416,13 +416,25 @@ describe("GET /api/predictions", () => {
     // the confirmed status it reads off the parent batch.
     await reconcilePendingBatches(db, chain, new Date(Date.now() + 61 * 60_000));
 
+    // Settle the question on chain so GET can expose the settlement tx.
+    const settlementSignature = randomBytes(44).toString("hex").slice(0, 88);
+    await db
+      .update(questions)
+      .set({ status: "settled", result: "yes", settlementSignature })
+      .where(eq(questions.id, question.id));
+
     const res = await app.request("/api/predictions", authed(mine.token));
     expect(res.status).toBe(200);
     const rows: {
       questionId: string;
       outcome: string;
       chainStatus: string;
-      question: { id: string; template: string; fixtureId: string };
+      question: {
+        id: string;
+        template: string;
+        fixtureId: string;
+        settlementSignature: string | null;
+      };
     }[] = await res.json();
 
     expect(rows).toHaveLength(1);
@@ -435,6 +447,7 @@ describe("GET /api/predictions", () => {
       id: question.id,
       template: "winner",
       fixtureId: question.fixtureId,
+      settlementSignature,
     });
   });
 

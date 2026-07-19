@@ -284,6 +284,9 @@ export function createPredictionRoutes(
             locksAt: row.question.locksAt,
             settledAt: row.question.settledAt,
             questionPda: row.question.questionPda,
+            // Devnet tx that settled this question on chain; null until
+            // settlement lands. Lets the client link straight to the explorer.
+            settlementSignature: row.question.settlementSignature,
             question: copy.text,
             outcomes: copy.outcomes,
             rule: {
