@@ -61,7 +61,7 @@ export default defineConfig({
         navigateFallback: "/app.html",
         navigateFallbackAllowlist: [/^\/app/],
       },
-      includeAssets: ["favicon.svg", "og.jpg"],
+      includeAssets: ["favicon.png", "og-cuprush.png"],
       manifest: {
         name: "CupRush 26",
         start_url: "/app",
@@ -74,9 +74,9 @@ export default defineConfig({
         orientation: "portrait",
         icons: [
           {
-            src: "favicon.svg",
-            sizes: "any",
-            type: "image/svg+xml",
+            src: "favicon.png",
+            sizes: "1254x1254",
+            type: "image/png",
             purpose: "any",
           },
           {
