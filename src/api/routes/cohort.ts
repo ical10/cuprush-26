@@ -22,6 +22,11 @@ import type { DbProvider } from "../auth/middleware";
 // Submissions stop 2 minutes before a question's lock (deadline-race guard,
 // PRD non-negotiable 5). Applied to both the pending list and submit path.
 const SUBMISSION_MARGIN_MS = 2 * 60_000;
+// Page size per player per tick: keeps the pending payload bounded when a
+// large backlog opens at once (a full board briefly hit ~209KB for the whole
+// cohort). Soonest-locking questions come first; the 3-minute tick cadence
+// drains any backlog long before decks lock.
+const PENDING_QUESTIONS_LIMIT = Number(process.env.COHORT_PENDING_LIMIT ?? 20);
 
 // Short recent form the relay reasons over — no question text, just the shape
 // of past calls (template + own pick + whether it landed).
@@ -233,13 +238,15 @@ export async function getPendingWork(
       answeredByParticipant.set(row.participantId, set);
     }
 
-    // Open questions with more than the 2-minute margin left before lock.
+    // Open questions with more than the 2-minute margin left before lock,
+    // soonest lock first so a capped page never starves an expiring deck.
     const cutoff = new Date(Date.now() + SUBMISSION_MARGIN_MS);
     const openRows = await db
       .select({ question: questions, fixture: fixtures })
       .from(questions)
       .innerJoin(fixtures, eq(questions.fixtureId, fixtures.id))
-      .where(and(eq(questions.status, "open"), gt(questions.locksAt, cutoff)));
+      .where(and(eq(questions.status, "open"), gt(questions.locksAt, cutoff)))
+      .orderBy(questions.locksAt);
 
     const openQuestions = openRows.map((row) => {
       const copy = renderCopy(row.question, row.fixture);
@@ -259,7 +266,9 @@ export async function getPendingWork(
           persona: p.agent.persona,
           strategy: p.agent.strategy,
           history: historyByParticipant.get(p.participant.id) ?? [],
-          open_questions: openQuestions.filter((q) => !answeredSet?.has(q.id)),
+          open_questions: openQuestions
+            .filter((q) => !answeredSet?.has(q.id))
+            .slice(0, PENDING_QUESTIONS_LIMIT),
         };
       }),
     };
