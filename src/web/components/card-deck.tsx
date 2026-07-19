@@ -100,15 +100,17 @@ function Deck({ onNavigateAuth, initialAnswer, onInitialAnswerConsumed }: Props)
     setIndex((i) => i + 1);
   }
 
-  function handleAnswer(outcome: string) {
-    if (!current) return;
+  function handleAnswer(outcome: string): boolean {
+    if (!current) return false;
     if (!isAuthenticated) {
       // Sign-in gate stays at the first answer — guests browse and drag
-      // freely, but must sign in before any pick is kept.
+      // freely, but must sign in before any pick is kept. The deck doesn't
+      // advance, so the card must not play its exit animation either.
       setPendingOutcome(outcome);
-      return;
+      return false;
     }
     record(current, outcome);
+    return true;
   }
 
   function handleSignIn() {

@@ -35,7 +35,7 @@ const question: Question = {
 
 describe("QuestionCard", () => {
   it("renders the fixture, the question, and both directional cue labels as text", () => {
-    render(<QuestionCard question={question} onAnswer={() => {}} />);
+    render(<QuestionCard question={question} onAnswer={() => true} />);
     expect(screen.getByText("Argentina vs Brazil")).toBeInTheDocument();
     expect(screen.getByText(question.question)).toBeInTheDocument();
     // Swipe cues mirror the rail: No on the left, Yes on the right.
@@ -44,7 +44,7 @@ describe("QuestionCard", () => {
   });
 
   it("contains no outcome buttons — those live in the deck's action rail", () => {
-    render(<QuestionCard question={question} onAnswer={() => {}} />);
+    render(<QuestionCard question={question} onAnswer={() => true} />);
     expect(screen.queryByRole("button")).not.toBeInTheDocument();
   });
 
@@ -90,8 +90,21 @@ describe("QuestionCard", () => {
     expect(onAnswer).not.toHaveBeenCalled();
   });
 
+  // Regression: a guest's swipe reports the outcome but the deck doesn't
+  // advance (sign-in gate). The card must stay visible and draggable
+  // instead of playing an exit animation into permanent invisibility.
+  it("stays visible and re-draggable after a drag onAnswer declines (guest sign-in gate)", async () => {
+    const onAnswer = vi.fn().mockReturnValue(false);
+    render(<QuestionCard question={question} onAnswer={onAnswer} />);
+    const card = screen.getByTestId("question-card");
+    await drag(card, 150);
+    expect(onAnswer).toHaveBeenCalledWith("Yes");
+    expect(card).toHaveStyle({ opacity: "1" });
+    expect(card.getAttribute("style") ?? "").not.toContain("translateX(600px)");
+  });
+
   it("reveals the would-be outcome only after the drag crosses the threshold", async () => {
-    render(<QuestionCard question={question} onAnswer={() => {}} />);
+    render(<QuestionCard question={question} onAnswer={() => true} />);
     const card = screen.getByTestId("question-card");
     const opts = { pointerId: 1, isPrimary: true, pointerType: "mouse" as const };
 

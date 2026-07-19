@@ -13,7 +13,7 @@ import type { Question } from "../lib/types";
 
 type Props = {
   question: Question;
-  onAnswer(outcome: string): void;
+  onAnswer(outcome: string): boolean;
   disabled?: boolean;
 };
 
@@ -61,10 +61,11 @@ export function QuestionCard({ question, onAnswer, disabled }: Props) {
       info.velocity.x,
     );
     if (!outcome) return;
+    const accepted = onAnswer(outcome);
+    if (!accepted) return; // guest sign-in gate: deck hasn't advanced, keep this card visible
     const byVelocity = Math.abs(info.velocity.x) >= SWIPE_VELOCITY_THRESHOLD;
     const direction = byVelocity ? info.velocity.x : info.offset.x;
     setExitDirection(direction > 0 ? 1 : -1);
-    onAnswer(outcome);
   }
 
   const previewLabel = capitalizeOutcome(
