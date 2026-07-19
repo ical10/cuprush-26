@@ -78,6 +78,25 @@ body {
   transition: border-color 140ms ease, transform 100ms ease-out;
 }
 .topbar-cta:active { transform: scale(0.97); transition-duration: 140ms, 70ms; }
+.topbar-link {
+  color: var(--muted);
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 0.9rem;
+  transition: color 140ms ease;
+}
+.topbar-cta--primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  background: var(--lime);
+  color: #0a1408;
+  font-weight: 800;
+  border: none;
+  border-radius: 0;
+  clip-path: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 10px 100%, 0 calc(100% - 10px));
+  transition: filter 140ms ease, transform 100ms ease-out;
+}
 
 .pitch { align-self: center; }
 
@@ -157,6 +176,8 @@ body {
 
 @media (hover: hover) and (pointer: fine) {
   .topbar-cta:hover { border-color: var(--lime); }
+  .topbar-cta--primary:hover { filter: brightness(1.08); }
+  .topbar-link:hover { color: var(--ink); }
   .cta:hover { box-shadow: 0 6px 40px rgba(215, 255, 63, 0.35); }
   .cta:hover .cta-arrow { transform: translateX(4px); }
 }
